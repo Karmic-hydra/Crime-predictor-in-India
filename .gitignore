@@ -1,6 +1,7 @@
 # --- Python Virtual Environment ---
 venv/
 __pycache__/
+RawData/
 
 # --- Data Files ---
 # Your large, sensitive data files.
@@ -8,7 +9,7 @@ __pycache__/
 FINAL_DATA_CLEANED.csv
 FINAL_DATA_WITH_GEOLOCATION.csv
 FINAL_DATA_WITH_ALL_FEATURES.csv
-
+ALL_INDIA_DATA.csv
 # --- Model Files ---
 # These are large binary files derived from data.
 *.joblib

@@ -300,7 +300,7 @@
             if (data.h3_index) {
                 const boundary = h3.cellToBoundary(data.h3_index, true);
                 const color = data.risk_level === 'red' ? '#ef4444' : 
-                              data.risk_level === 'yellow' ? '#f59e0b' : '#22c55e';
+                            data.risk_level === 'yellow' ? '#f59e0b' : '#22c55e';
 
                 riskPolygonLayer = L.polygon(boundary, {
                     color: color,

@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy>=1.4
+geoalchemy2
+psycopg2-binary
+pandas
+scikit-learn
+h3
+python-dotenv

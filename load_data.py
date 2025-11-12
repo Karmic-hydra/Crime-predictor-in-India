@@ -2,9 +2,10 @@ import pandas as pd
 from models import SessionLocal, Crime, engine # Import from models.py
 from sqlalchemy.orm import sessionmaker
 import os
+import importlib
 
 # --- 1. CONFIGURATION ---
-CSV_FILE_PATH = "FINAL_DATA_WITH_GEOLOCATION.csv" 
+CSV_FILE_PATH = "ALL_INDIA_DATA.csv" 
 
 # --- 2. LOAD CSV ---
 try:
@@ -46,6 +47,12 @@ session = Session()
 print("Starting bulk insert. This may take a minute...")
 
 try:
+    # Drop and recreate the crimes table
+    models = importlib.import_module('models')
+    models.Base.metadata.drop_all(bind=models.engine, tables=[models.Crime.__table__])
+    models.Base.metadata.create_all(bind=models.engine, tables=[models.Crime.__table__])
+    print('Dropped and recreated crimes table')
+    
     session.bulk_insert_mappings(Crime, data_dict)
     session.commit()
     
