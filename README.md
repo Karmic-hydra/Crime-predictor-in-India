@@ -1,4 +1,70 @@
-Step 1: Clone Repository and Setup Environment
+🇮🇳 End-to-End Geospatial Crime Predictor
+
+Project Title
+
+End-to-End Geospatial Crime Predictor
+
+🌟 Overview and Goal
+
+This project is a high-availability, full-stack web application that provides real-time crime risk assessment and visualization of historical crime data for all of India, with an emphasis on fine-grained prediction for Bengaluru.
+
+The architecture combines a powerful geospatial database (PostGIS) with a machine learning model (RandomForest) trained on the Uber H3 grid system, ensuring highly accurate, location- and time-specific risk predictions.
+
+💻 Tech Stack Highlights
+
+Category
+
+Core Technologies
+
+Key Function
+
+Backend API
+
+Python, FastAPI, SQLAlchemy
+
+Serves prediction and hotspot data.
+
+Database
+
+PostgreSQL, PostGIS, Neon/Supabase (Cloud)
+
+Geospatial storage and querying (ST_DWithin).
+
+Data Science
+
+Pandas, Scikit-learn (RandomForest), H3
+
+Model training and location indexing.
+
+Frontend
+
+HTML, Tailwind CSS, Leaflet.js
+
+Interactive map visualization (Heatmaps, H3 Polygons).
+
+Live Updates
+
+NewsAPI, Hugging Face NER, GitHub Actions
+
+Continuous data ingestion and daily model retraining.
+
+🚀 Local Setup and Execution
+
+To run the full application locally, you must run three separate processes concurrently, all connecting to your remote PostGIS database.
+
+Prerequisites
+
+Python 3.10+
+
+git
+
+psql command-line tool (for database setup)
+
+A Cloud PostGIS Database (e.g., Neon)
+
+NewsAPI Key (For the Live Worker)
+
+Step 1: Clone and Install Dependencies
 
 # Clone the repository
 git clone [https://github.com/Karmic-hydra/Crime-predictor-in-India.git](https://github.com/Karmic-hydra/Crime-predictor-in-India.git)
@@ -15,73 +81,79 @@ pip install -r requirements.txt
 
 Step 2: Configure Environment Variables
 
-Create a file named .env in the root directory to store your credentials securely.
+Create a file named .env in the root directory to securely store your credentials.
 
-Variable Name
+# Cloud Database URL (from Neon/Supabase - without the ?options= search_path parameter)
+DATABASE_URL="postgresql://[user]:[password]@[host]/[dbname]"
 
-Description
+# Key required for news data ingestion
+NEWS_API_KEY="your-newsapi-key-here"
 
-Example Value
+# Secret used to secure the /add_crime endpoint
+API_SECRET_KEY="your-strong-worker-secret"
 
-DATABASE_URL
 
-Cloud DB Connection String (e.g., Neon URL. Must point to your PostGIS database.)
+Step 3: Run All Three Services
 
-postgresql://user:pass@host/db
+Open three separate terminal windows (or tabs), activate the venv in each, and run the following commands:
 
-NEWS_API_KEY
+Terminal 1: Start FastAPI Backend (API Server)
 
-Your key for accessing NewsAPI.org.
-
-a1b2c3d4e5f6g7h8i9j0
-
-API_SECRET_KEY
-
-A secret key for the /add_crime endpoint (used by the worker).
-
-my-secure-worker-key
-
-Step 3: Run the Components (3 Terminals Required)
-
-You must run all three parts concurrently for the full system to be operational.
-
-Terminal 1: FastAPI Backend (API Server)
-
-This starts the API that handles data fetching (/get_hotspots) and machine learning predictions (/predict_risk). This is now connected to your cloud PostGIS database.
-
-# Ensure venv is activated
+# Runs on [http://127.0.0.1:8000](http://127.0.0.1:8000)
 uvicorn main:app --reload --port 8000
 
 
-Terminal 2: Frontend Dashboard (Browser)
+Terminal 2: Serve Frontend Dashboard
 
-Since the frontend is a single HTML file, you need a local server to serve it. We assume it runs on port 5500.
+This serves the index.html file, which accesses the API running on port 8000.
 
-Use a VS Code extension like Live Server to open index.html.
-
-Alternatively, use Python's built-in server:
-
+# Runs on [http://127.0.0.1:5500](http://127.0.0.1:5500) (assuming VS Code Live Server or similar)
 python -m http.server 5500
 
 
-Navigate to http://127.0.0.1:5500/index.html in your browser.
+Then navigate to http://127.0.0.1:5500/index.html in your web browser.
 
-Terminal 3: Live News Worker (Data Ingestion)
+Terminal 3: Start Live News Worker
 
-This script continuously monitors news sources and inserts new, confirmed crime events into your cloud database.
+This worker runs indefinitely, fetching, processing, and submitting new crime data to your cloud database.
 
-# Ensure venv and .env variables are loaded
 python news_worker.py
 
 
-🌐 Public Deployment (For Reference)
+🌐 Deployment Architecture
 
-The architecture is designed for cloud deployment:
+The entire system is containerized and separated for reliability:
 
-API (main.py): Deployed to a service like Render or Heroku.
+Component
 
-Scheduler (schedule_training.yml): Runs daily via GitHub Actions to keep the model updated.
+Deployment Service
 
-Frontend (index.html): Hosted statically via Netlify or Vercel.
+Purpose
 
-Database: Hosted on Neon or Supabase with PostGIS enabled.
+FastAPI Backend
+
+Render / Google App Engine
+
+Publicly accessible API endpoint.
+
+Frontend Dashboard
+
+Netlify / Vercel (Static Host)
+
+Serves the static index.html.
+
+Model Retraining
+
+GitHub Actions (Cron Job)
+
+Runs train_model.py daily at 03:00 AM UTC.
+
+Live Worker
+
+DigitalOcean Droplet / Cloud Function
+
+Runs 24/7 for data ingestion.
+
+License
+
+This project is licensed under the MIT License.
