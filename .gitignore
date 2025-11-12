@@ -1,0 +1,20 @@
+# --- Python Virtual Environment ---
+venv/
+__pycache__/
+
+# --- Data Files ---
+# Your large, sensitive data files.
+*.csv
+FINAL_DATA_CLEANED.csv
+FINAL_DATA_WITH_GEOLOCATION.csv
+FINAL_DATA_WITH_ALL_FEATURES.csv
+
+# --- Model Files ---
+# These are large binary files derived from data.
+*.joblib
+crime_model.joblib
+h3_index_encoder.joblib
+day_encoder.joblib
+
+# --- IDE Files ---
+.vscode/

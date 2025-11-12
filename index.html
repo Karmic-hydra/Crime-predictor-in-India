@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crime Predictor Dashboard</title>
+
+    <!-- 1. Leaflet (Map) CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- 2. Leaflet Geosearch (Search Bar) CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-geosearch@3.11.0/dist/geosearch.css" />
+    <script src="https://unpkg.com/leaflet-geosearch@3.11.0/dist/geosearch.umd.js"></script>
+
+    <!-- 3. H3-js (for drawing grid cells) -->
+    <script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
+
+    <!-- 4. Leaflet.heat (for the glowing bubble) -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+    <!-- 5. Tailwind CSS (for styling the UI) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        .leaflet-container {
+            height: 100vh;
+            width: 100%;
+            z-index: 0;
+        }
+        #dashboard {
+            z-index: 1000; /* Ensure dashboard is on top */
+        }
+        .leaflet-bar a, .leaflet-bar a:hover {
+            line-height: 1.4 !important;
+        }
+        
+        /* --- STYLES FOR LIGHT MODE (DEFAULT) --- */
+        body { background-color: #f0f0f0; }
+        .leaflet-geosearch-bar form {
+            background-clip: padding-box;
+            background-color: #ffffff;
+            border-color: #ccc;
+        }
+        .leaflet-geosearch-bar form input {
+            background-color: #ffffff;
+            color: #333;
+        }
+        .leaflet-geosearch-bar .results {
+            background-color: #ffffff;
+        }
+         .leaflet-geosearch-bar .results > li:hover, .leaflet-geosearch-bar .results > li.active {
+            background-color: #f4f4f4;
+        }
+
+        /* --- STYLES FOR DARK MODE (WHEN .dark CLASS IS ADDED) --- */
+        body.dark .leaflet-container {
+            background-color: #222;
+        }
+        body.dark .leaflet-geosearch-bar form {
+            background-color: #333;
+            border-color: #555;
+        }
+        body.dark .leaflet-geosearch-bar form input {
+            background-color: #333;
+            color: #eee;
+        }
+        body.dark .leaflet-geosearch-bar .results {
+            background-color: #333;
+        }
+        body.dark .leaflet-geosearch-bar .results > li:hover, body.dark .leaflet-geosearch-bar .results > li.active {
+            background-color: #444;
+        }
+        body.dark #dashboard {
+            background-color: rgba(31, 41, 55, 0.9); /* bg-gray-800 */
+            color: white;
+        }
+        body.dark #search-container p {
+            color: #9ca3af; /* text-gray-400 */
+        }
+        body.dark #risk-notification {
+            color: white; /* Ensure text is white in dark mode */
+        }
+
+    </style>
+</head>
+<!-- Start in light mode by default -->
+<body class="font-sans">
+
+    <!-- The Map Container -->
+    <div id="map" class="absolute top-0 left-0"></div>
+
+    <!-- The Dashboard UI Container -->
+    <div id="dashboard" class="absolute top-4 left-4 w-96 max-w-[90vw] p-4 bg-white bg-opacity-90 rounded-lg shadow-lg text-gray-900">
+        <h1 class="text-2xl font-bold mb-3">Crime Predictor</h1>
+        
+        <!-- Search Bar will be added here by Leaflet Geosearch -->
+        <div id="search-container" class="mb-3">
+            <p class="text-sm text-gray-500">Search for a landmark or address:</p>
+            <!-- Geosearch bar will attach itself here -->
+        </div>
+
+        <!-- "My Location" Button -->
+        <button id="my-location-btn" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
+            Use My Current Location
+        </button>
+
+        <!-- "Toggle Theme" Button -->
+        <button id="toggle-theme-btn" class="w-full mt-2 bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-800 transition duration-300">
+            Switch to Dark Mode
+        </button>
+
+        <!-- Risk Notification Area -->
+        <div id="risk-notification" class="mt-4 p-4 rounded-lg text-white font-bold text-lg text-center" style="display: none;">
+            <!-- Content dynamically set by JS -->
+        </div>
+    </div>
+
+    <script>
+        // --- 0. CONFIGURATION ---
+        const API_BASE_URL = "http://127.0.0.1:8000";
+        const H3_RESOLUTION = 9; 
+        const ANALYSIS_RADIUS_KM = 2.0;
+        
+        // --- 1. INITIALIZE MAP & UI ---
+        const map = L.map('map').setView([12.9716, 77.5946], 13); // Default to Bengaluru
+
+        // --- DEFINE BOTH MAP SKINS ---
+        const lightMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        });
+        
+        const darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20
+        });
+
+        // --- DEFINE BOTH HEATMAP GRADIENTS ---
+        const lightHeatGradient = { 0.4: 'yellow', 0.8: 'red', 1.0: '#b30000' };
+        const darkHeatGradient = { 0.4: 'blue', 0.65: 'yellow', 1: 'red' };
+        
+        // --- ADD LIGHT MAP ON LOAD ---
+        lightMap.addTo(map);
+        let isDarkMode = false;
+        
+        const notificationDiv = document.getElementById('risk-notification');
+        const myLocationBtn = document.getElementById('my-location-btn');
+        const toggleBtn = document.getElementById('toggle-theme-btn');
+        
+        // --- 2. SETUP GEOSEARCH (Search Bar) ---
+        const searchProvider = new GeoSearch.OpenStreetMapProvider();
+        const searchControl = new GeoSearch.GeoSearchControl({
+            provider: searchProvider,
+            style: 'bar',
+            showMarker: true,
+            showPopup: false,
+            autoClose: true,
+            retainZoomLevel: false,
+            animateZoom: true,
+            keepResult: true,
+            searchLabel: 'e.g., MG Road, Bengaluru',
+        });
+        map.addControl(searchControl);
+
+        map.on('geosearch/showlocation', (result) => {
+            const lat = result.location.y;
+            const lon = result.location.x;
+            analyzeLocation(lat, lon, `Risk at: ${result.location.label.substring(0, 30)}...`);
+        });
+
+        // --- 3. SETUP "MY LOCATION" BUTTON ---
+        // *** THIS IS NOW FIXED: IT USES YOUR REAL LOCATION ***
+        myLocationBtn.addEventListener('click', () => {
+            notificationDiv.style.display = 'none';
+            
+            // --- THIS IS THE REAL GEOLOCATION CODE ---
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    map.setView([lat, lon], 15);
+                    L.marker([lat, lon]).addTo(map).bindPopup("<b>You are here</b>").openPopup();
+                    analyzeLocation(lat, lon, "Risk at your current location:");
+                },
+                (error) => {
+                    alert(`Error getting location: ${error.message}`);
+                }
+            );
+
+            // --- This is the hard-coded test (keep it for debugging) ---
+            /*
+            console.log("TEST: Forcing location to MG Road, Bengaluru to show hotspots.");
+            const lat = 12.9716;
+            const lon = 77.5946;
+            map.setView([lat, lon], 15);
+            L.marker([lat, lon]).addTo(map).bindPopup("<b>Test Location</b><br>MG Road").openPopup();
+            analyzeLocation(lat, lon, "Risk at: MG Road, Bengaluru");
+            */
+        });
+
+        // --- 4. NEW: SETUP THEME TOGGLE BUTTON ---
+        toggleBtn.addEventListener('click', () => {
+            isDarkMode = !isDarkMode; // Flip the state
+            if (isDarkMode) {
+                // Switch to Dark Mode
+                document.body.classList.add('dark');
+                map.removeLayer(lightMap);
+                darkMap.addTo(map);
+                toggleBtn.innerText = 'Switch to Light Mode';
+                // Update heatmap colors if it exists
+                if (heatmapLayer) {
+                    heatmapLayer.setOptions({ gradient: darkHeatGradient });
+                }
+            } else {
+                // Switch to Light Mode
+                document.body.classList.remove('dark');
+                map.removeLayer(darkMap);
+                lightMap.addTo(map);
+                toggleBtn.innerText = 'Switch to Dark Mode';
+                // Update heatmap colors if it exists
+                if (heatmapLayer) {
+                    heatmapLayer.setOptions({ gradient: lightHeatGradient });
+                }
+            }
+        });
+
+        // --- 5. MASTER ANALYSIS FUNCTION ---
+        async function analyzeLocation(lat, lon, title) {
+            clearMapLayers(); 
+            
+            const radiusInMeters = ANALYSIS_RADIUS_KM * 1000;
+            analysisCircleLayer = L.circle([lat, lon], {
+                radius: radiusInMeters,
+                color: "#ef4444",       // Red outline
+                weight: 2,
+                fillColor: "#ef4444",   // Red fill
+                fillOpacity: 0.1
+            }).addTo(map);
+
+            const [riskData, hotspotData] = await Promise.all([
+                getLiveRisk(lat, lon),
+                getHistoricalHotspots(lat, lon, ANALYSIS_RADIUS_KM)
+            ]);
+
+            visualizeRisk(riskData, title);
+            visualizeHotspots(hotspotData); 
+        }
+
+        // --- 6. API CALL: /predict_risk ---
+        async function getLiveRisk(lat, lon) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/predict_risk`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ latitude: lat, longitude: lon })
+                });
+                return await response.json();
+            } catch (error) {
+                console.error("Error fetching risk prediction:", error);
+                return null;
+            }
+        }
+
+        // --- 7. API CALL: /get_hotspots ---
+        async function getHistoricalHotspots(lat, lon, radius_km) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/get_hotspots?lat=${lat}&lon=${lon}&radius_km=${radius_km}`);
+                return await response.json();
+            } catch (error) {
+                console.error("Error fetching hotspots:", error);
+                return null;
+            }
+        }
+
+        // --- 8. VISUALIZATION ---
+        
+        let riskPolygonLayer;
+        let heatmapLayer; 
+        let analysisCircleLayer; 
+
+        function visualizeRisk(data, title) {
+            if (!data) return;
+
+            notificationDiv.style.display = 'block';
+            let riskTitle = title;
+            
+            if (data.risk_level === 'red') {
+                notificationDiv.style.backgroundColor = 'rgba(220, 38, 38, 0.9)'; // Red
+                riskTitle += "<br>High Risk Area";
+            } else if (data.risk_level === 'yellow') {
+                notificationDiv.style.backgroundColor = 'rgba(234, 179, 8, 0.9)'; // Yellow
+                riskTitle += "<br>Medium Risk Area";
+            } else {
+                notificationDiv.style.backgroundColor = 'rgba(34, 197, 94, 0.9)'; // Green
+                riskTitle += "<br>Low Risk Area";
+            }
+            notificationDiv.innerHTML = riskTitle;
+
+            if (data.h3_index) {
+                const boundary = h3.cellToBoundary(data.h3_index, true);
+                const color = data.risk_level === 'red' ? '#ef4444' : 
+                              data.risk_level === 'yellow' ? '#f59e0b' : '#22c55e';
+
+                riskPolygonLayer = L.polygon(boundary, {
+                    color: color,
+                    weight: 3,
+                    fillColor: color,
+                    fillOpacity: 0.3
+                }).addTo(map);
+            }
+        }
+
+        // --- THIS FUNCTION IS NOW FIXED FOR LIGHT/DARK MODE ---
+        function visualizeHotspots(data) {
+            if (!data || !data.hotspots || data.hotspots.length === 0) {
+                console.log("No historical hotspots to display.");
+                return;
+            }
+
+            console.log(`Received ${data.hotspots.length} hotspots, drawing heatmap...`);
+
+            const heatPoints = data.hotspots.map(crime => {
+                return [crime.latitude, crime.longitude, 0.2]; // [lat, lon, intensity]
+            });
+
+            // Check current theme to apply the correct gradient
+            const currentGradient = isDarkMode ? darkHeatGradient : lightHeatGradient;
+
+            heatmapLayer = L.heatLayer(heatPoints, {
+                radius: 25,
+                blur: 20,
+                maxZoom: 18,
+                gradient: currentGradient // Use the dynamic gradient
+            }).addTo(map);
+        }
+
+        function clearMapLayers() {
+            if (riskPolygonLayer) {
+                map.removeLayer(riskPolygonLayer);
+            }
+            if (heatmapLayer) {
+                map.removeLayer(heatmapLayer);
+            }
+            if (analysisCircleLayer) { 
+                map.removeLayer(analysisCircleLayer);
+            }
+        }
+    </script>
+</body>
+</html>
