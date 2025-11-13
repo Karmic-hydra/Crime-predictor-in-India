@@ -49,7 +49,7 @@
         .leaflet-geosearch-bar .results {
             background-color: #ffffff;
         }
-         .leaflet-geosearch-bar .results > li:hover, .leaflet-geosearch-bar .results > li.active {
+        .leaflet-geosearch-bar .results > li:hover, .leaflet-geosearch-bar .results > li.active {
             background-color: #f4f4f4;
         }
 
@@ -81,6 +81,67 @@
         body.dark #risk-notification {
             color: white; /* Ensure text is white in dark mode */
         }
+        /* Gauge Specific Styles */
+#risk-gauge-container {
+    position: relative;
+    width: 250px;
+    height: 125px;
+    margin: 0 auto;
+    overflow: hidden; /* Clips the circle to a semi-circle */
+}
+.gauge-arc {
+    position: absolute;
+    bottom: 0;
+    width: 250px;
+    height: 250px;
+    border-radius: 50%;
+    border-width: 50px; /* Thickness of the arc */
+    border-style: solid;
+    box-sizing: border-box;
+}
+/* Color definitions for the three arcs */
+/* The clip styles define the arc segments (Red=Left, Yellow=Middle, Green=Right) */
+#red-arc { 
+    border-color: #dc2626 transparent transparent transparent; 
+    clip: rect(auto, 125px, 125px, 0); /* Left Quarter (Red) */
+}
+#yellow-arc { 
+    border-color: #eab308 transparent transparent transparent; 
+    clip: rect(auto, 166.6px, 125px, 83.3px); /* Middle Quarter (Yellow) */
+}
+#green-arc { 
+    border-color: #22c55e transparent transparent transparent; 
+    clip: rect(auto, 250px, 125px, 125px); /* Right Quarter (Green) */
+}
+
+#gauge-needle {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    /* Set pivot point to the bottom center of the gauge */
+    transform-origin: 0 100%; 
+    width: 2px;
+    height: 125px;
+    transition: transform 1s ease-in-out; /* Smooth movement */
+    z-index: 10;
+}
+/* Initial needle color and center pin color */
+#gauge-needle { background-color: #1f2937; } 
+#gauge-center {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 15px;
+    height: 15px;
+    background-color: #1f2937; 
+    border-radius: 50%;
+    z-index: 20;
+}
+/* Dark mode adaptation for needle/center */
+body.dark #gauge-needle, body.dark #gauge-center {
+    background-color: #f3f4f6;
+}
 
     </style>
 </head>
@@ -110,10 +171,33 @@
             Switch to Dark Mode
         </button>
 
-        <!-- Risk Notification Area -->
-        <div id="risk-notification" class="mt-4 p-4 rounded-lg text-white font-bold text-lg text-center" style="display: none;">
-            <!-- Content dynamically set by JS -->
-        </div>
+        <!-- Risk Notification Area (GAUGE & CONTEXT) -->
+<div id="risk-display-area" class="mt-4 p-4 rounded-lg bg-gray-50 dark:bg-gray-800 shadow-inner" style="display: none;">
+    <!-- 1. The Risk Gauge -->
+    <div id="risk-gauge-container">
+        <!-- The three colored arcs (Red, Yellow, Green) -->
+        <div id="red-arc" class="gauge-arc"></div>
+        <div id="yellow-arc" class="gauge-arc"></div>
+        <div id="green-arc" class="gauge-arc"></div>
+        
+        <!-- The Needle and Center Pin -->
+        <div id="gauge-needle" style="transform: rotate(-90deg);"></div>
+        <div id="gauge-center"></div>
+    </div>
+
+    <!-- 2. Risk Status Text -->
+    <div id="risk-status-text" class="text-center mt-2 pb-2 border-b dark:border-gray-700">
+        <!-- Risk level (Low/Medium/High) and Context status will be dynamically inserted here -->
+    </div>
+
+    <!-- 3. Contextual Grounding Data -->
+    <h3 id="context-header" class="text-sm font-semibold mt-3 mb-1 text-gray-700 dark:text-gray-300" style="display: none;">
+        <span class="inline-block w-2 h-2 bg-yellow-400 rounded-full mr-1"></span> Recent Confirmation (48hr):
+    </h3>
+    <ul id="context-list" class="space-y-1 text-sm text-gray-700 dark:text-gray-400 max-h-40 overflow-y-auto">
+        <!-- Contextual articles populate here -->
+    </ul>
+</div>
     </div>
 
     <script>
@@ -144,9 +228,12 @@
         lightMap.addTo(map);
         let isDarkMode = false;
         
-        const notificationDiv = document.getElementById('risk-notification');
-        const myLocationBtn = document.getElementById('my-location-btn');
-        const toggleBtn = document.getElementById('toggle-theme-btn');
+        // --- 1. INITIALIZE MAP & UI ---
+// ... (lines 100-103)
+
+const riskDisplayArea = document.getElementById('risk-display-area'); // <-- Use the new ID
+const myLocationBtn = document.getElementById('my-location-btn');
+const toggleBtn = document.getElementById('toggle-theme-btn');
         
         // --- 2. SETUP GEOSEARCH (Search Bar) ---
         const searchProvider = new GeoSearch.OpenStreetMapProvider();
@@ -172,7 +259,7 @@
         // --- 3. SETUP "MY LOCATION" BUTTON ---
         // *** THIS IS NOW FIXED: IT USES YOUR REAL LOCATION ***
         myLocationBtn.addEventListener('click', () => {
-            notificationDiv.style.display = 'none';
+            riskDisplayArea.style.display = 'none';
             
             // --- THIS IS THE REAL GEOLOCATION CODE ---
             navigator.geolocation.getCurrentPosition(
@@ -274,42 +361,95 @@
         }
 
         // --- 8. VISUALIZATION ---
-        
-        let riskPolygonLayer;
-        let heatmapLayer; 
-        let analysisCircleLayer; 
+        
+        let riskPolygonLayer;
+        let heatmapLayer; 
+        let analysisCircleLayer; 
 
-        function visualizeRisk(data, title) {
-            if (!data) return;
+        function visualizeRisk(data, title) {
+            if (!data) return;
 
-            notificationDiv.style.display = 'block';
-            let riskTitle = title;
+            document.getElementById('risk-display-area').style.display = 'block';
+            
+            const needle = document.getElementById('gauge-needle');
+            const riskStatusText = document.getElementById('risk-status-text');
+            const contextList = document.getElementById('context-list');
+            const contextHeader = document.getElementById('context-header');
+
+            // 1. Determine Needle Rotation and Text based on final risk code (0, 1, or 2)
+            let rotationDeg; // -90 (Green), 0 (Yellow), 90 (Red)
+            let riskText;
+            let textColorClass;
+            let riskColor;
+
+            switch (data.risk_code) {
+                case 0: 
+                    rotationDeg = -90;
+                    riskText = "LOW RISK";
+                    textColorClass = "text-green-600 dark:text-green-400";
+                    riskColor = '#22c55e';
+                    break;
+                case 1:
+                    rotationDeg = 0;
+                    riskText = "MEDIUM RISK";
+                    textColorClass = "text-yellow-600 dark:text-yellow-400";
+                    riskColor = '#f59e0b';
+                    break;
+                case 2:
+                    rotationDeg = 90;
+                    riskText = "HIGH RISK";
+                    textColorClass = "text-red-600 dark:text-red-400";
+                    riskColor = '#ef4444';
+                    break;
+                default:
+                    rotationDeg = 0;
+                    riskText = "UNKNOWN";
+                    textColorClass = "text-gray-500";
+                    riskColor = '#6b7280';
+            }
+
+            // Apply Rotation to Needle
+            needle.style.transform = `rotate(${rotationDeg}deg) translateX(-50%)`;
+            
+            // Update Text Display
+            riskStatusText.innerHTML = 
+                `<p class="text-xs text-gray-500 dark:text-gray-400">${title}</p>
+                <span class="${textColorClass} font-bold text-3xl block">${riskText}</span>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Prediction Status: ${data.context_status}</p>`;
+
+            // 2. Draw H3 Prediction Hexagon
+            if (data.h3_index) {
+                const boundary = h3.cellToBoundary(data.h3_index, true);
+                
+                riskPolygonLayer = L.polygon(boundary, {
+                    color: riskColor,
+                    weight: 3,
+                    fillColor: riskColor,
+                    fillOpacity: 0.3
+                }).addTo(map);
+            }
             
-            if (data.risk_level === 'red') {
-                notificationDiv.style.backgroundColor = 'rgba(220, 38, 38, 0.9)'; // Red
-                riskTitle += "<br>High Risk Area";
-            } else if (data.risk_level === 'yellow') {
-                notificationDiv.style.backgroundColor = 'rgba(234, 179, 8, 0.9)'; // Yellow
-                riskTitle += "<br>Medium Risk Area";
+            // 3. Update Contextual Data List
+            contextList.innerHTML = ''; // Clear previous list
+            if (data.context_data && data.context_data.length > 0) {
+                contextHeader.style.display = 'block';
+                contextHeader.innerHTML = `<span class="inline-block w-2 h-2 bg-yellow-400 rounded-full mr-1"></span> Recent Confirmation (${data.context_data.length} Reports):`;
+                
+                data.context_data.forEach(item => {
+                    const li = document.createElement('li');
+                    li.className = 'text-xs border-b border-gray-200 dark:border-gray-700 py-1 last:border-b-0';
+                    li.innerHTML = `
+                        <a href="${item.link}" target="_blank" class="hover:text-blue-500 transition duration-150 block truncate">
+                            <span class="font-semibold">${item.title}</span> 
+                            <span class="text-gray-400">(${item.location})</span>
+                        </a>`;
+                    contextList.appendChild(li);
+                });
             } else {
-                notificationDiv.style.backgroundColor = 'rgba(34, 197, 94, 0.9)'; // Green
-                riskTitle += "<br>Low Risk Area";
+                contextHeader.style.display = 'none';
+                contextList.innerHTML = `<li class="text-xs text-gray-500 dark:text-gray-400 py-1">No recent contextual news found (48 hr window).</li>`;
             }
-            notificationDiv.innerHTML = riskTitle;
-
-            if (data.h3_index) {
-                const boundary = h3.cellToBoundary(data.h3_index, true);
-                const color = data.risk_level === 'red' ? '#ef4444' : 
-                            data.risk_level === 'yellow' ? '#f59e0b' : '#22c55e';
-
-                riskPolygonLayer = L.polygon(boundary, {
-                    color: color,
-                    weight: 3,
-                    fillColor: color,
-                    fillOpacity: 0.3
-                }).addTo(map);
-            }
-        }
+        }
 
         // --- THIS FUNCTION IS NOW FIXED FOR LIGHT/DARK MODE ---
         function visualizeHotspots(data) {
