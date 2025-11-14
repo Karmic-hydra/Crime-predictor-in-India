@@ -5,486 +5,603 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crime Predictor Dashboard</title>
 
-    <!-- 1. Leaflet (Map) CSS & JS -->
+    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    <!-- 2. Leaflet Geosearch (Search Bar) CSS & JS -->
+    <!-- Leaflet Geosearch -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet-geosearch@3.11.0/dist/geosearch.css" />
     <script src="https://unpkg.com/leaflet-geosearch@3.11.0/dist/geosearch.umd.js"></script>
 
-    <!-- 3. H3-js (for drawing grid cells) -->
+    <!-- H3-js -->
     <script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
 
-    <!-- 4. Leaflet.heat (for the glowing bubble) -->
+    <!-- Leaflet.heat -->
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
-    <!-- 5. Tailwind CSS (for styling the UI) -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        .leaflet-container {
-            height: 100vh;
-            width: 100%;
-            z-index: 0;
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+        #map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+        #dashboard { z-index: 1000; max-height: 95vh; overflow-y: auto; }
+        
+        /* Risk Gauge Styles */
+        #risk-gauge-container {
+            position: relative;
+            width: 250px;
+            height: 125px;
+            margin: 0 auto;
+            overflow: hidden;
         }
-        #dashboard {
-            z-index: 1000; /* Ensure dashboard is on top */
+        .gauge-arc {
+            position: absolute;
+            bottom: 0;
+            width: 250px;
+            height: 250px;
+            border-radius: 50%;
+            border-width: 40px;
+            border-style: solid;
+            box-sizing: border-box;
         }
-        .leaflet-bar a, .leaflet-bar a:hover {
-            line-height: 1.4 !important;
+        #red-arc { 
+            border-color: #dc2626 transparent transparent transparent; 
+            clip: rect(auto, 125px, 125px, 0);
+        }
+        #yellow-arc { 
+            border-color: #eab308 transparent transparent transparent; 
+            clip: rect(auto, 166.6px, 125px, 83.3px);
+        }
+        #green-arc { 
+            border-color: #22c55e transparent transparent transparent; 
+            clip: rect(auto, 250px, 125px, 125px);
+        }
+        #gauge-needle {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform-origin: 0 100%; 
+            width: 3px;
+            height: 115px;
+            background-color: #1f2937;
+            transition: transform 1s ease-in-out;
+            z-index: 10;
+        }
+        #gauge-center {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 18px;
+            height: 18px;
+            background-color: #1f2937;
+            border-radius: 50%;
+            z-index: 20;
         }
         
-        /* --- STYLES FOR LIGHT MODE (DEFAULT) --- */
-        body { background-color: #f0f0f0; }
-        .leaflet-geosearch-bar form {
-            background-clip: padding-box;
-            background-color: #ffffff;
-            border-color: #ccc;
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
         }
-        .leaflet-geosearch-bar form input {
-            background-color: #ffffff;
-            color: #333;
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
-        .leaflet-geosearch-bar .results {
-            background-color: #ffffff;
-        }
-        .leaflet-geosearch-bar .results > li:hover, .leaflet-geosearch-bar .results > li.active {
-            background-color: #f4f4f4;
-        }
-
-        /* --- STYLES FOR DARK MODE (WHEN .dark CLASS IS ADDED) --- */
-        body.dark .leaflet-container {
-            background-color: #222;
-        }
-        body.dark .leaflet-geosearch-bar form {
-            background-color: #333;
-            border-color: #555;
-        }
-        body.dark .leaflet-geosearch-bar form input {
-            background-color: #333;
-            color: #eee;
-        }
-        body.dark .leaflet-geosearch-bar .results {
-            background-color: #333;
-        }
-        body.dark .leaflet-geosearch-bar .results > li:hover, body.dark .leaflet-geosearch-bar .results > li.active {
-            background-color: #444;
-        }
-        body.dark #dashboard {
-            background-color: rgba(31, 41, 55, 0.9); /* bg-gray-800 */
-            color: white;
-        }
-        body.dark #search-container p {
-            color: #9ca3af; /* text-gray-400 */
-        }
-        body.dark #risk-notification {
-            color: white; /* Ensure text is white in dark mode */
-        }
-        /* Gauge Specific Styles */
-#risk-gauge-container {
-    position: relative;
-    width: 250px;
-    height: 125px;
-    margin: 0 auto;
-    overflow: hidden; /* Clips the circle to a semi-circle */
-}
-.gauge-arc {
-    position: absolute;
-    bottom: 0;
-    width: 250px;
-    height: 250px;
-    border-radius: 50%;
-    border-width: 50px; /* Thickness of the arc */
-    border-style: solid;
-    box-sizing: border-box;
-}
-/* Color definitions for the three arcs */
-/* The clip styles define the arc segments (Red=Left, Yellow=Middle, Green=Right) */
-#red-arc { 
-    border-color: #dc2626 transparent transparent transparent; 
-    clip: rect(auto, 125px, 125px, 0); /* Left Quarter (Red) */
-}
-#yellow-arc { 
-    border-color: #eab308 transparent transparent transparent; 
-    clip: rect(auto, 166.6px, 125px, 83.3px); /* Middle Quarter (Yellow) */
-}
-#green-arc { 
-    border-color: #22c55e transparent transparent transparent; 
-    clip: rect(auto, 250px, 125px, 125px); /* Right Quarter (Green) */
-}
-
-#gauge-needle {
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    /* Set pivot point to the bottom center of the gauge */
-    transform-origin: 0 100%; 
-    width: 2px;
-    height: 125px;
-    transition: transform 1s ease-in-out; /* Smooth movement */
-    z-index: 10;
-}
-/* Initial needle color and center pin color */
-#gauge-needle { background-color: #1f2937; } 
-#gauge-center {
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 15px;
-    height: 15px;
-    background-color: #1f2937; 
-    border-radius: 50%;
-    z-index: 20;
-}
-/* Dark mode adaptation for needle/center */
-body.dark #gauge-needle, body.dark #gauge-center {
-    background-color: #f3f4f6;
-}
-
     </style>
 </head>
-<!-- Start in light mode by default -->
-<body class="font-sans">
+<body class="font-sans bg-gray-100">
 
-    <!-- The Map Container -->
-    <div id="map" class="absolute top-0 left-0"></div>
+    <div id="map"></div>
 
-    <!-- The Dashboard UI Container -->
-    <div id="dashboard" class="absolute top-4 left-4 w-96 max-w-[90vw] p-4 bg-white bg-opacity-90 rounded-lg shadow-lg text-gray-900">
-        <h1 class="text-2xl font-bold mb-3">Crime Predictor</h1>
-        
-        <!-- Search Bar will be added here by Leaflet Geosearch -->
-        <div id="search-container" class="mb-3">
-            <p class="text-sm text-gray-500">Search for a landmark or address:</p>
-            <!-- Geosearch bar will attach itself here -->
+    <!-- Dashboard -->
+    <div id="dashboard" class="absolute top-4 right-4 bg-white rounded-lg shadow-2xl max-w-md w-80 p-5">
+        <!-- Header -->
+        <div class="mb-4">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">🚨 Crime Risk Analyzer</h2>
+            <p class="text-xs text-gray-500">AI-powered crime risk prediction</p>
         </div>
 
-        <!-- "My Location" Button -->
-        <button id="my-location-btn" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
-            Use My Current Location
-        </button>
+        <!-- Step 1: Location Selection -->
+        <div id="step-location" class="mb-4">
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-3 mb-3">
+                <h3 class="text-sm font-bold text-blue-700 mb-1">📍 Step 1: Select Location</h3>
+                <p class="text-xs text-blue-600">Choose where to analyze crime risk</p>
+            </div>
+            
+            <!-- Search Bar Container -->
+            <div id="search-container" class="mb-3">
+                <!-- Geosearch will insert here -->
+            </div>
+            
+            <!-- Quick Action Buttons -->
+            <div class="grid grid-cols-2 gap-2 mb-3">
+                <button id="my-location-btn" 
+                        class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-3 rounded text-xs transition duration-200">
+                    📍 My Location
+                </button>
+                <button id="bangalore-preset-btn" 
+                        class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-3 rounded text-xs transition duration-200">
+                    🏙️ Bangalore
+                </button>
+            </div>
+            
+            <!-- Selected Location Display -->
+            <div id="selected-location-display" class="hidden bg-green-50 border border-green-200 rounded p-3 mb-3">
+                <p class="text-xs font-semibold text-green-700">✅ Location Selected:</p>
+                <p id="location-name" class="text-sm text-green-800 font-medium mt-1"></p>
+                <p id="location-coords" class="text-xs text-green-600 mt-1"></p>
+            </div>
+            
+            <!-- Predict Button -->
+            <button id="predict-btn" 
+                    disabled
+                    class="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 
+                           disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed 
+                           text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg transform hover:scale-105">
+                🔮 Analyze Risk
+            </button>
+            <p class="text-xs text-gray-400 mt-2 text-center" id="predict-helper">
+                Select a location to enable analysis
+            </p>
+        </div>
 
-        <!-- "Toggle Theme" Button -->
-        <button id="toggle-theme-btn" class="w-full mt-2 bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-800 transition duration-300">
-            Switch to Dark Mode
-        </button>
-
-        <!-- Risk Notification Area (GAUGE & CONTEXT) -->
-<div id="risk-display-area" class="mt-4 p-4 rounded-lg bg-gray-50 dark:bg-gray-800 shadow-inner" style="display: none;">
-    <!-- 1. The Risk Gauge -->
-    <div id="risk-gauge-container">
-        <!-- The three colored arcs (Red, Yellow, Green) -->
-        <div id="red-arc" class="gauge-arc"></div>
-        <div id="yellow-arc" class="gauge-arc"></div>
-        <div id="green-arc" class="gauge-arc"></div>
-        
-        <!-- The Needle and Center Pin -->
-        <div id="gauge-needle" style="transform: rotate(-90deg);"></div>
-        <div id="gauge-center"></div>
-    </div>
-
-    <!-- 2. Risk Status Text -->
-    <div id="risk-status-text" class="text-center mt-2 pb-2 border-b dark:border-gray-700">
-        <!-- Risk level (Low/Medium/High) and Context status will be dynamically inserted here -->
-    </div>
-
-    <!-- 3. Contextual Grounding Data -->
-    <h3 id="context-header" class="text-sm font-semibold mt-3 mb-1 text-gray-700 dark:text-gray-300" style="display: none;">
-        <span class="inline-block w-2 h-2 bg-yellow-400 rounded-full mr-1"></span> Recent Confirmation (48hr):
-    </h3>
-    <ul id="context-list" class="space-y-1 text-sm text-gray-700 dark:text-gray-400 max-h-40 overflow-y-auto">
-        <!-- Contextual articles populate here -->
-    </ul>
-</div>
+        <!-- Step 2: Analysis Results (Hidden Initially) -->
+        <div id="step-results" class="hidden">
+            <div class="bg-purple-50 border-l-4 border-purple-500 p-3 mb-4">
+                <h3 class="text-sm font-bold text-purple-700 mb-1">📊 Step 2: Risk Analysis</h3>
+                <p class="text-xs text-purple-600">Comprehensive area assessment</p>
+            </div>
+            
+            <!-- Loading State -->
+            <div id="loading-state" class="text-center py-8">
+                <div class="loading-spinner"></div>
+                <p class="text-sm text-gray-600 mt-3">Analyzing risk factors...</p>
+                <p class="text-xs text-gray-400 mt-1">This may take 5-10 seconds</p>
+            </div>
+            
+            <!-- Results Content -->
+            <div id="results-content" class="hidden">
+                <!-- Risk Score Display -->
+                <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 mb-4 text-center">
+                    <p class="text-xs text-gray-500 mb-2">Overall Risk Score</p>
+                    <div class="text-6xl font-bold mb-2" id="risk-percentage">-</div>
+                    <p class="text-sm font-semibold mb-1" id="risk-level-text">Calculating...</p>
+                    <p class="text-xs text-gray-500" id="risk-description"></p>
+                </div>
+                
+                <!-- Risk Gauge -->
+                <div id="risk-gauge-container" class="mb-4">
+                    <div id="green-arc" class="gauge-arc"></div>
+                    <div id="yellow-arc" class="gauge-arc"></div>
+                    <div id="red-arc" class="gauge-arc"></div>
+                    <div id="gauge-needle"></div>
+                    <div id="gauge-center"></div>
+                </div>
+                
+                <!-- Three-Layer Breakdown -->
+                <div class="space-y-2 mb-4">
+                    <h4 class="text-xs font-bold text-gray-700 mb-2">Risk Factor Breakdown:</h4>
+                    
+                    <!-- Layer 1: Historical -->
+                    <div class="bg-white border-l-4 border-blue-500 rounded p-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-semibold text-gray-700">🕐 Historical (20%)</span>
+                            <span id="historical-score" class="text-sm font-bold text-blue-600">-</span>
+                        </div>
+                        <p id="historical-details" class="text-xs text-gray-500 mt-1">2001-2014 crime patterns</p>
+                    </div>
+                    
+                    <!-- Layer 2: Environmental -->
+                    <div class="bg-white border-l-4 border-green-500 rounded p-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-semibold text-gray-700">🌍 Environmental (50%)</span>
+                            <span id="environmental-score" class="text-sm font-bold text-green-600">-</span>
+                        </div>
+                        <p id="environmental-details" class="text-xs text-gray-500 mt-1">Real-time POI density</p>
+                        <div id="poi-breakdown" class="text-xs text-gray-600 mt-1"></div>
+                    </div>
+                    
+                    <!-- Layer 3: Contextual -->
+                    <div class="bg-white border-l-4 border-yellow-500 rounded p-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-semibold text-gray-700">📰 Contextual (30%)</span>
+                            <span id="contextual-score" class="text-sm font-bold text-yellow-600">-</span>
+                        </div>
+                        <p id="contextual-details" class="text-xs text-gray-500 mt-1">Recent crime news</p>
+                    </div>
+                </div>
+                
+                <!-- Recent News -->
+                <div id="news-section" class="hidden mb-4">
+                    <h4 class="text-xs font-bold text-gray-700 mb-2">📰 Recent Crime Reports:</h4>
+                    <ul id="news-list" class="space-y-1 max-h-32 overflow-y-auto"></ul>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="space-y-2">
+                    <button id="show-hotspots-btn" 
+                            class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded transition duration-200 text-sm">
+                        🔥 Show Hotspots
+                    </button>
+                    <button id="new-analysis-btn" 
+                            class="w-full bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded transition duration-200 text-sm">
+                        🔄 New Analysis
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
-        // --- 0. CONFIGURATION ---
+        // ===== CONFIGURATION =====
         const API_BASE_URL = "https://find-crime-near-you.onrender.com";
-        const H3_RESOLUTION = 9; 
-        const ANALYSIS_RADIUS_KM = 2.0;
-        
-        // --- 1. INITIALIZE MAP & UI ---
-        const map = L.map('map').setView([12.9716, 77.5946], 13); // Default to Bengaluru
+        const ANALYSIS_RADIUS_KM = 2;
 
-        // --- DEFINE BOTH MAP SKINS ---
-        const lightMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        });
-        
-        const darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
-            maxZoom: 20
-        });
+        // ===== STATE =====
+        let selectedLocation = null;
+        let currentRiskData = null;
+        let map, marker, riskPolygon, heatmapLayer, analysisCircle;
 
-        // --- DEFINE BOTH HEATMAP GRADIENTS ---
-        const lightHeatGradient = { 0.4: 'yellow', 0.8: 'red', 1.0: '#b30000' };
-        const darkHeatGradient = { 0.4: 'blue', 0.65: 'yellow', 1: 'red' };
-        
-        // --- ADD LIGHT MAP ON LOAD ---
-        lightMap.addTo(map);
-        let isDarkMode = false;
-        
-        // --- 1. INITIALIZE MAP & UI ---
-// ... (lines 100-103)
+        // ===== DOM ELEMENTS =====
+        const myLocationBtn = document.getElementById('my-location-btn');
+        const bangalorePresetBtn = document.getElementById('bangalore-preset-btn');
+        const predictBtn = document.getElementById('predict-btn');
+        const showHotspotsBtn = document.getElementById('show-hotspots-btn');
+        const newAnalysisBtn = document.getElementById('new-analysis-btn');
+        const selectedLocationDisplay = document.getElementById('selected-location-display');
+        const locationName = document.getElementById('location-name');
+        const locationCoords = document.getElementById('location-coords');
+        const stepLocation = document.getElementById('step-location');
+        const stepResults = document.getElementById('step-results');
+        const loadingState = document.getElementById('loading-state');
+        const resultsContent = document.getElementById('results-content');
 
-const riskDisplayArea = document.getElementById('risk-display-area'); // <-- Use the new ID
-const myLocationBtn = document.getElementById('my-location-btn');
-const toggleBtn = document.getElementById('toggle-theme-btn');
-        
-        // --- 2. SETUP GEOSEARCH (Search Bar) ---
-        const searchProvider = new GeoSearch.OpenStreetMapProvider();
+        // ===== INITIALIZE MAP =====
+        map = L.map('map').setView([12.9716, 77.5946], 12); // Bangalore center
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Add search control
         const searchControl = new GeoSearch.GeoSearchControl({
-            provider: searchProvider,
+            provider: new GeoSearch.OpenStreetMapProvider(),
             style: 'bar',
-            showMarker: true,
-            showPopup: false,
-            autoClose: true,
+            autoComplete: true,
+            autoCompleteDelay: 250,
+            showMarker: false,
             retainZoomLevel: false,
             animateZoom: true,
             keepResult: true,
-            searchLabel: 'e.g., MG Road, Bengaluru',
+            searchLabel: 'Search location...'
         });
         map.addControl(searchControl);
 
+        // ===== EVENT LISTENERS =====
+        
+        // Geosearch result
         map.on('geosearch/showlocation', (result) => {
-            const lat = result.location.y;
-            const lon = result.location.x;
-            analyzeLocation(lat, lon, `Risk at: ${result.location.label.substring(0, 30)}...`);
+            setLocation(result.location.y, result.location.x, result.location.label);
         });
 
-        // --- 3. SETUP "MY LOCATION" BUTTON ---
-        // *** THIS IS NOW FIXED: IT USES YOUR REAL LOCATION ***
+        // My Location button
         myLocationBtn.addEventListener('click', () => {
-            riskDisplayArea.style.display = 'none';
+            myLocationBtn.disabled = true;
+            myLocationBtn.textContent = '⏳ Getting...';
             
-            // --- THIS IS THE REAL GEOLOCATION CODE ---
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
-                    map.setView([lat, lon], 15);
-                    L.marker([lat, lon]).addTo(map).bindPopup("<b>You are here</b>").openPopup();
-                    analyzeLocation(lat, lon, "Risk at your current location:");
+                    setLocation(lat, lon, 'Your Current Location');
+                    myLocationBtn.disabled = false;
+                    myLocationBtn.innerHTML = '📍 My Location';
                 },
                 (error) => {
-                    alert(`Error getting location: ${error.message}`);
+                    alert(`Error: ${error.message}`);
+                    myLocationBtn.disabled = false;
+                    myLocationBtn.innerHTML = '📍 My Location';
                 }
             );
-
-            // --- This is the hard-coded test (keep it for debugging) ---
-            /*
-            console.log("TEST: Forcing location to MG Road, Bengaluru to show hotspots.");
-            const lat = 12.9716;
-            const lon = 77.5946;
-            map.setView([lat, lon], 15);
-            L.marker([lat, lon]).addTo(map).bindPopup("<b>Test Location</b><br>MG Road").openPopup();
-            analyzeLocation(lat, lon, "Risk at: MG Road, Bengaluru");
-            */
         });
 
-        // --- 4. NEW: SETUP THEME TOGGLE BUTTON ---
-        toggleBtn.addEventListener('click', () => {
-            isDarkMode = !isDarkMode; // Flip the state
-            if (isDarkMode) {
-                // Switch to Dark Mode
-                document.body.classList.add('dark');
-                map.removeLayer(lightMap);
-                darkMap.addTo(map);
-                toggleBtn.innerText = 'Switch to Light Mode';
-                // Update heatmap colors if it exists
-                if (heatmapLayer) {
-                    heatmapLayer.setOptions({ gradient: darkHeatGradient });
-                }
-            } else {
-                // Switch to Light Mode
-                document.body.classList.remove('dark');
-                map.removeLayer(darkMap);
-                lightMap.addTo(map);
-                toggleBtn.innerText = 'Switch to Dark Mode';
-                // Update heatmap colors if it exists
-                if (heatmapLayer) {
-                    heatmapLayer.setOptions({ gradient: lightHeatGradient });
-                }
-            }
+        // Bangalore preset
+        bangalorePresetBtn.addEventListener('click', () => {
+            setLocation(12.9716, 77.5946, 'MG Road, Bangalore');
         });
 
-        // --- 5. MASTER ANALYSIS FUNCTION ---
-        async function analyzeLocation(lat, lon, title) {
-            clearMapLayers(); 
+        // Predict button
+        predictBtn.addEventListener('click', async () => {
+            if (!selectedLocation) return;
             
-            const radiusInMeters = ANALYSIS_RADIUS_KM * 1000;
-            analysisCircleLayer = L.circle([lat, lon], {
-                radius: radiusInMeters,
-                color: "#ef4444",       // Red outline
+            // Hide location selection, show results
+            stepLocation.classList.add('hidden');
+            stepResults.classList.remove('hidden');
+            loadingState.classList.remove('hidden');
+            resultsContent.classList.add('hidden');
+            
+            // Clear previous map layers
+            clearMapLayers();
+            
+            // Draw analysis circle
+            analysisCircle = L.circle([selectedLocation.lat, selectedLocation.lon], {
+                radius: ANALYSIS_RADIUS_KM * 1000,
+                color: '#9333ea',
                 weight: 2,
-                fillColor: "#ef4444",   // Red fill
+                fillColor: '#9333ea',
                 fillOpacity: 0.1
             }).addTo(map);
-
-            const [riskData, hotspotData] = await Promise.all([
-                getLiveRisk(lat, lon),
-                getHistoricalHotspots(lat, lon, ANALYSIS_RADIUS_KM)
-            ]);
-
-            visualizeRisk(riskData, title);
-            visualizeHotspots(hotspotData); 
-        }
-
-        // --- 6. API CALL: /predict_risk ---
-        async function getLiveRisk(lat, lon) {
+            
+            // Fetch risk data
             try {
+                console.log('Fetching risk prediction for:', selectedLocation);
                 const response = await fetch(`${API_BASE_URL}/predict_risk`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ latitude: lat, longitude: lon })
+                    body: JSON.stringify({
+                        latitude: selectedLocation.lat,
+                        longitude: selectedLocation.lon
+                    })
                 });
-                return await response.json();
-            } catch (error) {
-                console.error("Error fetching risk prediction:", error);
-                return null;
-            }
-        }
-
-        // --- 7. API CALL: /get_hotspots ---
-        async function getHistoricalHotspots(lat, lon, radius_km) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/get_hotspots?lat=${lat}&lon=${lon}&radius_km=${radius_km}`);
-                return await response.json();
-            } catch (error) {
-                console.error("Error fetching hotspots:", error);
-                return null;
-            }
-        }
-
-        // --- 8. VISUALIZATION ---
-        
-        let riskPolygonLayer;
-        let heatmapLayer; 
-        let analysisCircleLayer; 
-
-        function visualizeRisk(data, title) {
-            if (!data) return;
-
-            document.getElementById('risk-display-area').style.display = 'block';
-            
-            const needle = document.getElementById('gauge-needle');
-            const riskStatusText = document.getElementById('risk-status-text');
-            const contextList = document.getElementById('context-list');
-            const contextHeader = document.getElementById('context-header');
-
-            // 1. Determine Needle Rotation and Text based on final risk code (0, 1, or 2)
-            let rotationDeg; // -90 (Green), 0 (Yellow), 90 (Red)
-            let riskText;
-            let textColorClass;
-            let riskColor;
-
-            switch (data.risk_code) {
-                case 0: 
-                    rotationDeg = -90;
-                    riskText = "LOW RISK";
-                    textColorClass = "text-green-600 dark:text-green-400";
-                    riskColor = '#22c55e';
-                    break;
-                case 1:
-                    rotationDeg = 0;
-                    riskText = "MEDIUM RISK";
-                    textColorClass = "text-yellow-600 dark:text-yellow-400";
-                    riskColor = '#f59e0b';
-                    break;
-                case 2:
-                    rotationDeg = 90;
-                    riskText = "HIGH RISK";
-                    textColorClass = "text-red-600 dark:text-red-400";
-                    riskColor = '#ef4444';
-                    break;
-                default:
-                    rotationDeg = 0;
-                    riskText = "UNKNOWN";
-                    textColorClass = "text-gray-500";
-                    riskColor = '#6b7280';
-            }
-
-            // Apply Rotation to Needle
-            needle.style.transform = `rotate(${rotationDeg}deg) translateX(-50%)`;
-            
-            // Update Text Display
-            riskStatusText.innerHTML = 
-                `<p class="text-xs text-gray-500 dark:text-gray-400">${title}</p>
-                <span class="${textColorClass} font-bold text-3xl block">${riskText}</span>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Prediction Status: ${data.context_status}</p>`;
-
-            // 2. Draw H3 Prediction Hexagon
-            if (data.h3_index) {
-                const boundary = h3.cellToBoundary(data.h3_index, true);
-                
-                riskPolygonLayer = L.polygon(boundary, {
-                    color: riskColor,
-                    weight: 3,
-                    fillColor: riskColor,
-                    fillOpacity: 0.3
-                }).addTo(map);
-            }
-            
-            // 3. Update Contextual Data List
-            contextList.innerHTML = ''; // Clear previous list
-            if (data.context_data && data.context_data.length > 0) {
-                contextHeader.style.display = 'block';
-                contextHeader.innerHTML = `<span class="inline-block w-2 h-2 bg-yellow-400 rounded-full mr-1"></span> Recent Confirmation (${data.context_data.length} Reports):`;
                 
-                data.context_data.forEach(item => {
-                    const li = document.createElement('li');
-                    li.className = 'text-xs border-b border-gray-200 dark:border-gray-700 py-1 last:border-b-0';
-                    li.innerHTML = `
-                        <a href="${item.link}" target="_blank" class="hover:text-blue-500 transition duration-150 block truncate">
-                            <span class="font-semibold">${item.title}</span> 
-                            <span class="text-gray-400">(${item.location})</span>
-                        </a>`;
-                    contextList.appendChild(li);
-                });
-            } else {
-                contextHeader.style.display = 'none';
-                contextList.innerHTML = `<li class="text-xs text-gray-500 dark:text-gray-400 py-1">No recent contextual news found (48 hr window).</li>`;
+                if (!response.ok) {
+                    throw new Error(`API returned status: ${response.status}`);
+                }
+                
+                currentRiskData = await response.json();
+                console.log('Risk data received:', currentRiskData);
+                displayRiskResults(currentRiskData);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to fetch risk data. Please try again.');
+                newAnalysisBtn.click();
             }
-        }
+        });
 
-        // --- THIS FUNCTION IS NOW FIXED FOR LIGHT/DARK MODE ---
-        function visualizeHotspots(data) {
-            if (!data || !data.hotspots || data.hotspots.length === 0) {
-                console.log("No historical hotspots to display.");
+        // Show hotspots button
+        showHotspotsBtn.addEventListener('click', async () => {
+            if (!selectedLocation) return;
+            
+            showHotspotsBtn.disabled = true;
+            showHotspotsBtn.textContent = '⏳ Loading...';
+            
+            try {
+                console.log('Fetching hotspots for:', selectedLocation);
+                const url = `${API_BASE_URL}/get_hotspots?lat=${selectedLocation.lat}&lon=${selectedLocation.lon}&radius_km=${ANALYSIS_RADIUS_KM}`;
+                console.log('Hotspots URL:', url);
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`Hotspots API returned status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Hotspots response:', data);
+                displayHotspots(data);
+                
+                showHotspotsBtn.textContent = '✅ Hotspots Shown';
+                showHotspotsBtn.classList.remove('bg-orange-500', 'hover:bg-orange-600');
+                showHotspotsBtn.classList.add('bg-green-500');
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to fetch hotspots. Please try again.');
+                showHotspotsBtn.disabled = false;
+                showHotspotsBtn.textContent = '🔥 Show Hotspots';
+            }
+        });
+
+        // New analysis button
+        newAnalysisBtn.addEventListener('click', () => {
+            // Reset state
+            selectedLocation = null;
+            currentRiskData = null;
+            clearMapLayers();
+            
+            // Show location selection
+            stepLocation.classList.remove('hidden');
+            stepResults.classList.add('hidden');
+            selectedLocationDisplay.classList.add('hidden');
+            predictBtn.disabled = true;
+            document.getElementById('predict-helper').textContent = 'Select a location to enable analysis';
+            
+            // Reset hotspots button
+            showHotspotsBtn.disabled = false;
+            showHotspotsBtn.textContent = '🔥 Show Hotspots';
+            showHotspotsBtn.classList.remove('bg-green-500');
+            showHotspotsBtn.classList.add('bg-orange-500', 'hover:bg-orange-600');
+        });
+
+        // ===== HELPER FUNCTIONS =====
+        
+        function setLocation(lat, lon, name) {
+            selectedLocation = { lat, lon, name };
+            
+            // Update UI
+            selectedLocationDisplay.classList.remove('hidden');
+            locationName.textContent = name;
+            locationCoords.textContent = `${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E`;
+            predictBtn.disabled = false;
+            document.getElementById('predict-helper').textContent = 'Ready to analyze!';
+            
+            // Update map
+            if (marker) map.removeLayer(marker);
+            marker = L.marker([lat, lon]).addTo(map);
+            map.setView([lat, lon], 14);
+        }
+        
+        function displayRiskResults(data) {
+            loadingState.classList.add('hidden');
+            resultsContent.classList.remove('hidden');
+            
+            // Convert 0-2 scale to 0-100%
+            // Safety check for undefined or NaN values
+            const rawScore = data.risk_score_raw || data.risk_code || 0;
+            const riskPercentage = Math.round((rawScore / 2) * 100);
+            
+            // Update main display
+            document.getElementById('risk-percentage').textContent = `${riskPercentage}%`;
+            document.getElementById('risk-percentage').className = `text-6xl font-bold mb-2 ${getRiskColor(riskPercentage)}`;
+            document.getElementById('risk-level-text').textContent = getRiskLevel(riskPercentage);
+            document.getElementById('risk-description').textContent = data.explanation || 'Risk analysis complete';
+            
+            // Update gauge needle (-90 = green/left, 0 = yellow/middle, 90 = red/right)
+            const needleRotation = -90 + (riskPercentage / 100) * 180;
+            document.getElementById('gauge-needle').style.transform = `rotate(${needleRotation}deg) translateX(-50%)`;
+            
+            // Update three layers
+            if (data.layer_scores) {
+                const layers = data.layer_scores;
+                
+                // Historical
+                const histPercent = Math.round((layers.historical.score / 2) * 100);
+                document.getElementById('historical-score').textContent = `${histPercent}%`;
+                document.getElementById('historical-details').textContent = 
+                    `Past crime patterns: ${layers.historical.score === 0 ? 'Low' : layers.historical.score === 1 ? 'Medium' : 'High'} risk`;
+                
+                // Environmental
+                const envPercent = Math.round((layers.environmental.score / 2) * 100);
+                document.getElementById('environmental-score').textContent = `${envPercent}%`;
+                document.getElementById('environmental-details').textContent = 
+                    `${layers.environmental.poi_count} POIs detected within 500m`;
+                
+                // POI breakdown
+                const poiBreakdown = document.getElementById('poi-breakdown');
+                poiBreakdown.innerHTML = '';
+                if (layers.environmental.poi_breakdown && layers.environmental.poi_count > 0) {
+                    const poi = layers.environmental.poi_breakdown;
+                    const items = [];
+                    if (poi.bars > 0) items.push(`🍺 ${poi.bars} bars`);
+                    if (poi.nightclubs > 0) items.push(`🎵 ${poi.nightclubs} nightclubs`);
+                    if (poi.atms > 0) items.push(`💰 ${poi.atms} ATMs`);
+                    if (poi.banks > 0) items.push(`🏦 ${poi.banks} banks`);
+                    if (poi.alcohol_shops > 0) items.push(`🍷 ${poi.alcohol_shops} shops`);
+                    poiBreakdown.textContent = items.join(' • ');
+                }
+                
+                // Contextual
+                const ctxPercent = Math.round((layers.contextual.score / 2) * 100);
+                document.getElementById('contextual-score').textContent = `${ctxPercent}%`;
+                document.getElementById('contextual-details').textContent = 
+                    layers.contextual.news_count > 0 
+                        ? `${layers.contextual.news_count} recent crime report(s)` 
+                        : 'No recent reports';
+                
+                // News articles
+                const newsSection = document.getElementById('news-section');
+                const newsList = document.getElementById('news-list');
+                if (layers.contextual.news_articles && layers.contextual.news_articles.length > 0) {
+                    newsSection.classList.remove('hidden');
+                    newsList.innerHTML = layers.contextual.news_articles.map(article => `
+                        <li class="text-xs border-b border-gray-200 py-1">
+                            <a href="${article.link}" target="_blank" class="hover:text-blue-500">
+                                <span class="font-semibold">${article.title}</span><br>
+                                <span class="text-gray-400">${article.location || 'Unknown location'}</span>
+                            </a>
+                        </li>
+                    `).join('');
+                } else {
+                    newsSection.classList.add('hidden');
+                }
+            }
+            
+            // Draw H3 hexagon
+            if (data.h3_index) {
+                const boundary = h3.cellToBoundary(data.h3_index, true);
+                riskPolygon = L.polygon(boundary, {
+                    color: getHexColor(riskPercentage),
+                    weight: 3,
+                    fillColor: getHexColor(riskPercentage),
+                    fillOpacity: 0.3
+                }).addTo(map);
+            }
+        }
+        
+        function displayHotspots(data) {
+            console.log('Hotspots data received:', data);
+            
+            if (!data || !data.hotspots) {
+                console.error('No hotspots data in response');
+                alert('No hotspots data available from server.');
                 return;
             }
-
-            console.log(`Received ${data.hotspots.length} hotspots, drawing heatmap...`);
-
-            const heatPoints = data.hotspots.map(crime => {
-                return [crime.latitude, crime.longitude, 0.2]; // [lat, lon, intensity]
+            
+            if (data.hotspots.length === 0) {
+                alert('No historical crime records found in this area. This might be a low-crime zone.');
+                return;
+            }
+            
+            // Filter out invalid coordinates
+            const validHotspots = data.hotspots.filter(crime => {
+                const hasLat = crime.latitude != null && !isNaN(parseFloat(crime.latitude));
+                const hasLon = crime.longitude != null && !isNaN(parseFloat(crime.longitude));
+                return hasLat && hasLon;
             });
-
-            // Check current theme to apply the correct gradient
-            const currentGradient = isDarkMode ? darkHeatGradient : lightHeatGradient;
-
+            
+            console.log(`Valid hotspots: ${validHotspots.length} out of ${data.hotspots.length}`);
+            
+            if (validHotspots.length === 0) {
+                alert('Crime data found, but coordinates are invalid. Database may need updating.');
+                return;
+            }
+            
+            // Create heat points with proper coordinates
+            const heatPoints = validHotspots.map(crime => [
+                parseFloat(crime.latitude), 
+                parseFloat(crime.longitude), 
+                0.5  // Intensity
+            ]);
+            
+            if (heatmapLayer) map.removeLayer(heatmapLayer);
+            
+            // Risk-based gradient: Green (low) → Yellow (medium) → Red (high)
             heatmapLayer = L.heatLayer(heatPoints, {
-                radius: 25,
-                blur: 20,
+                radius: 30,
+                blur: 25,
                 maxZoom: 18,
-                gradient: currentGradient // Use the dynamic gradient
+                max: 1.0,
+                gradient: {
+                    0.0: '#22c55e',   // Green (low risk)
+                    0.4: '#84cc16',   // Light green
+                    0.5: '#eab308',   // Yellow (medium risk)
+                    0.7: '#f97316',   // Orange
+                    1.0: '#dc2626'    // Red (high risk)
+                }
             }).addTo(map);
+            
+            console.log('Heatmap layer added successfully');
         }
-
+        
         function clearMapLayers() {
-            if (riskPolygonLayer) {
-                map.removeLayer(riskPolygonLayer);
-            }
-            if (heatmapLayer) {
-                map.removeLayer(heatmapLayer);
-            }
-            if (analysisCircleLayer) { 
-                map.removeLayer(analysisCircleLayer);
-            }
+            if (riskPolygon) { map.removeLayer(riskPolygon); riskPolygon = null; }
+            if (heatmapLayer) { map.removeLayer(heatmapLayer); heatmapLayer = null; }
+            if (analysisCircle) { map.removeLayer(analysisCircle); analysisCircle = null; }
+        }
+        
+        function getRiskColor(percentage) {
+            if (percentage < 33) return 'text-green-600';
+            if (percentage < 66) return 'text-yellow-600';
+            return 'text-red-600';
+        }
+        
+        function getHexColor(percentage) {
+            if (percentage < 33) return '#22c55e';
+            if (percentage < 66) return '#eab308';
+            return '#dc2626';
+        }
+        
+        function getRiskLevel(percentage) {
+            if (percentage < 33) return '✅ LOW RISK AREA';
+            if (percentage < 66) return '⚠️ MEDIUM RISK AREA';
+            return '🚨 HIGH RISK AREA';
         }
     </script>
 </body>
