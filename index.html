@@ -19,6 +19,10 @@
     <!-- Leaflet.heat -->
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
+    <!-- Leaflet Routing Machine -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
@@ -57,36 +61,17 @@
             border-color: #22c55e transparent transparent transparent; 
             clip: rect(auto, 250px, 125px, 125px);
         }
-        #gauge-needle {
-            position: absolute;
-            bottom: 0;
-            left: 50%;
-            transform-origin: 0 100%; 
-            width: 3px;
-            height: 115px;
-            background-color: #1f2937;
-            transition: transform 1s ease-in-out;
-            z-index: 10;
-        }
-        #gauge-center {
-            position: absolute;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 18px;
-            height: 18px;
-            background-color: #1f2937;
-            border-radius: 50%;
-            z-index: 20;
-        }
         
         .loading-spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #22c55e;
+            border-right: 6px solid #eab308;
+            border-bottom: 6px solid #dc2626;
+            border-left: 6px solid #f3f3f3;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
+            width: 50px;
+            height: 50px;
+            animation: spin 1.5s linear infinite;
             margin: 10px auto;
         }
         
@@ -104,8 +89,16 @@
     <div id="dashboard" class="absolute top-4 right-4 bg-white rounded-lg shadow-2xl max-w-md w-80 p-5">
         <!-- Header -->
         <div class="mb-4">
-            <h2 class="text-2xl font-bold text-gray-800 mb-2">🚨 Crime Risk Analyzer</h2>
-            <p class="text-xs text-gray-500">AI-powered crime risk prediction</p>
+            <div class="flex justify-between items-start">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">🚨 Crime Risk Analyzer</h2>
+                    <p class="text-xs text-gray-500">AI-powered crime risk prediction</p>
+                </div>
+                <button id="dark-mode-btn" 
+                        class="bg-gray-700 hover:bg-gray-800 text-white font-semibold py-2 px-3 rounded text-xs transition duration-200">
+                    🌙 Dark Mode
+                </button>
+            </div>
         </div>
 
         <!-- Step 1: Location Selection -->
@@ -131,6 +124,12 @@
                     🏙️ Bangalore
                 </button>
             </div>
+            
+            <!-- Route Analysis Button -->
+            <button id="analyze-route-btn" 
+                    class="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg transform hover:scale-105 mb-3">
+                🛣️ Analyze My Route
+            </button>
             
             <!-- Selected Location Display -->
             <div id="selected-location-display" class="hidden bg-green-50 border border-green-200 rounded p-3 mb-3">
@@ -159,30 +158,14 @@
                 <p class="text-xs text-purple-600">Comprehensive area assessment</p>
             </div>
             
-            <!-- Loading State -->
-            <div id="loading-state" class="text-center py-8">
-                <div class="loading-spinner"></div>
-                <p class="text-sm text-gray-600 mt-3">Analyzing risk factors...</p>
-                <p class="text-xs text-gray-400 mt-1">This may take 5-10 seconds</p>
-            </div>
-            
             <!-- Results Content -->
-            <div id="results-content" class="hidden">
+            <div id="results-content">
                 <!-- Risk Score Display -->
                 <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 mb-4 text-center">
                     <p class="text-xs text-gray-500 mb-2">Overall Risk Score</p>
                     <div class="text-6xl font-bold mb-2" id="risk-percentage">-</div>
                     <p class="text-sm font-semibold mb-1" id="risk-level-text">Calculating...</p>
                     <p class="text-xs text-gray-500" id="risk-description"></p>
-                </div>
-                
-                <!-- Risk Gauge -->
-                <div id="risk-gauge-container" class="mb-4">
-                    <div id="green-arc" class="gauge-arc"></div>
-                    <div id="yellow-arc" class="gauge-arc"></div>
-                    <div id="red-arc" class="gauge-arc"></div>
-                    <div id="gauge-needle"></div>
-                    <div id="gauge-center"></div>
                 </div>
                 
                 <!-- Three-Layer Breakdown -->
@@ -192,7 +175,7 @@
                     <!-- Layer 1: Historical -->
                     <div class="bg-white border-l-4 border-blue-500 rounded p-2">
                         <div class="flex justify-between items-center">
-                            <span class="text-xs font-semibold text-gray-700">🕐 Historical (20%)</span>
+                            <span class="text-xs font-semibold text-gray-700">🕐 Historical</span>
                             <span id="historical-score" class="text-sm font-bold text-blue-600">-</span>
                         </div>
                         <p id="historical-details" class="text-xs text-gray-500 mt-1">2001-2014 crime patterns</p>
@@ -201,7 +184,7 @@
                     <!-- Layer 2: Environmental -->
                     <div class="bg-white border-l-4 border-green-500 rounded p-2">
                         <div class="flex justify-between items-center">
-                            <span class="text-xs font-semibold text-gray-700">🌍 Environmental (50%)</span>
+                            <span class="text-xs font-semibold text-gray-700">🌍 Environmental</span>
                             <span id="environmental-score" class="text-sm font-bold text-green-600">-</span>
                         </div>
                         <p id="environmental-details" class="text-xs text-gray-500 mt-1">Real-time POI density</p>
@@ -211,7 +194,7 @@
                     <!-- Layer 3: Contextual -->
                     <div class="bg-white border-l-4 border-yellow-500 rounded p-2">
                         <div class="flex justify-between items-center">
-                            <span class="text-xs font-semibold text-gray-700">📰 Contextual (30%)</span>
+                            <span class="text-xs font-semibold text-gray-700">📰 Contextual</span>
                             <span id="contextual-score" class="text-sm font-bold text-yellow-600">-</span>
                         </div>
                         <p id="contextual-details" class="text-xs text-gray-500 mt-1">Recent crime news</p>
@@ -226,10 +209,6 @@
                 
                 <!-- Action Buttons -->
                 <div class="space-y-2">
-                    <button id="show-hotspots-btn" 
-                            class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded transition duration-200 text-sm">
-                        🔥 Show Hotspots
-                    </button>
                     <button id="new-analysis-btn" 
                             class="w-full bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded transition duration-200 text-sm">
                         🔄 New Analysis
@@ -241,33 +220,54 @@
 
     <script>
         // ===== CONFIGURATION =====
-        const API_BASE_URL = "https://find-crime-near-you.onrender.com";
+        const API_BASE_URL = "http://localhost:8000";  // LOCAL TESTING
+        // const API_BASE_URL = "https://find-crime-near-you.onrender.com";  // PRODUCTION
         const ANALYSIS_RADIUS_KM = 2;
 
         // ===== STATE =====
         let selectedLocation = null;
         let currentRiskData = null;
         let map, marker, riskPolygon, heatmapLayer, analysisCircle;
+        let isDarkMode = false;
+        let lightTileLayer, darkTileLayer;
+        
+        // Route analysis state
+        let isRouteMode = false;
+        let routeStartMarker = null;
+        let routeEndMarker = null;
+        let routeControl = null;
+        let routeRiskSegments = [];
+        
+        // Cache for risk predictions (speeds up repeat queries)
+        const riskCache = new Map();
+        const CACHE_PRECISION = 3; // Round to 3 decimal places for cache key
 
         // ===== DOM ELEMENTS =====
         const myLocationBtn = document.getElementById('my-location-btn');
         const bangalorePresetBtn = document.getElementById('bangalore-preset-btn');
         const predictBtn = document.getElementById('predict-btn');
-        const showHotspotsBtn = document.getElementById('show-hotspots-btn');
+        const darkModeBtn = document.getElementById('dark-mode-btn');
+        const analyzeRouteBtn = document.getElementById('analyze-route-btn');
         const newAnalysisBtn = document.getElementById('new-analysis-btn');
         const selectedLocationDisplay = document.getElementById('selected-location-display');
         const locationName = document.getElementById('location-name');
         const locationCoords = document.getElementById('location-coords');
         const stepLocation = document.getElementById('step-location');
         const stepResults = document.getElementById('step-results');
-        const loadingState = document.getElementById('loading-state');
         const resultsContent = document.getElementById('results-content');
 
         // ===== INITIALIZE MAP =====
         map = L.map('map').setView([12.9716, 77.5946], 12); // Bangalore center
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        
+        // Light mode tile layer (default)
+        lightTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
+        
+        // Dark mode tile layer
+        darkTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap contributors © CARTO'
+        });
 
         // Add search control
         const searchControl = new GeoSearch.GeoSearchControl({
@@ -316,6 +316,74 @@
             setLocation(12.9716, 77.5946, 'MG Road, Bangalore');
         });
 
+        // Dark mode toggle
+        darkModeBtn.addEventListener('click', () => {
+            isDarkMode = !isDarkMode;
+            if (isDarkMode) {
+                map.removeLayer(lightTileLayer);
+                darkTileLayer.addTo(map);
+                darkModeBtn.innerHTML = '☀️ Light Mode';
+                darkModeBtn.classList.remove('bg-gray-700', 'hover:bg-gray-800');
+                darkModeBtn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
+            } else {
+                map.removeLayer(darkTileLayer);
+                lightTileLayer.addTo(map);
+                darkModeBtn.innerHTML = '🌙 Dark Mode';
+                darkModeBtn.classList.remove('bg-yellow-500', 'hover:bg-yellow-600');
+                darkModeBtn.classList.add('bg-gray-700', 'hover:bg-gray-800');
+            }
+        });
+
+        // Analyze Route button
+        analyzeRouteBtn.addEventListener('click', () => {
+            if (!isRouteMode) {
+                // Enter route mode
+                isRouteMode = true;
+                analyzeRouteBtn.innerHTML = '❌ Cancel Route';
+                analyzeRouteBtn.classList.remove('bg-gradient-to-r', 'from-green-500', 'to-emerald-500', 'hover:from-green-600', 'hover:to-emerald-600');
+                analyzeRouteBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+                
+                alert('🛣️ Route Mode Active!\n\n1️⃣ Click on the map to set START point\n2️⃣ Click again to set END point\n3️⃣ Watch your route get risk-analyzed!');
+                
+                // Clear any existing route
+                clearRoute();
+            } else {
+                // Exit route mode
+                exitRouteMode();
+            }
+        });
+        
+        // Map click handler for route mode
+        map.on('click', async (e) => {
+            if (!isRouteMode) return;
+            
+            const lat = e.latlng.lat;
+            const lon = e.latlng.lng;
+            
+            if (!routeStartMarker) {
+                // Set start point
+                routeStartMarker = L.marker([lat, lon], {
+                    icon: L.divIcon({
+                        html: '🏁',
+                        className: 'text-2xl',
+                        iconSize: [30, 30]
+                    })
+                }).addTo(map).bindPopup('Start Point').openPopup();
+            } else if (!routeEndMarker) {
+                // Set end point
+                routeEndMarker = L.marker([lat, lon], {
+                    icon: L.divIcon({
+                        html: '🎯',
+                        className: 'text-2xl',
+                        iconSize: [30, 30]
+                    })
+                }).addTo(map).bindPopup('End Point').openPopup();
+                
+                // Calculate and analyze route
+                await calculateAndAnalyzeRoute();
+            }
+        });
+
         // Predict button
         predictBtn.addEventListener('click', async () => {
             if (!selectedLocation) return;
@@ -323,18 +391,17 @@
             // Hide location selection, show results
             stepLocation.classList.add('hidden');
             stepResults.classList.remove('hidden');
-            loadingState.classList.remove('hidden');
-            resultsContent.classList.add('hidden');
+            resultsContent.classList.remove('hidden');
             
             // Clear previous map layers
             clearMapLayers();
             
-            // Draw analysis circle
+            // Draw analysis circle (will be colored after risk calculation)
             analysisCircle = L.circle([selectedLocation.lat, selectedLocation.lon], {
                 radius: ANALYSIS_RADIUS_KM * 1000,
-                color: '#9333ea',
+                color: '#6b7280',
                 weight: 2,
-                fillColor: '#9333ea',
+                fillColor: '#6b7280',
                 fillOpacity: 0.1
             }).addTo(map);
             
@@ -358,6 +425,9 @@
                 console.log('Risk data received:', currentRiskData);
                 displayRiskResults(currentRiskData);
                 
+                // Auto-load hotspots after risk analysis
+                await loadHotspots();
+                
             } catch (error) {
                 console.error('Error:', error);
                 alert('Failed to fetch risk data. Please try again.');
@@ -365,12 +435,9 @@
             }
         });
 
-        // Show hotspots button
-        showHotspotsBtn.addEventListener('click', async () => {
+        // Load hotspots function (auto-called after risk analysis)
+        async function loadHotspots() {
             if (!selectedLocation) return;
-            
-            showHotspotsBtn.disabled = true;
-            showHotspotsBtn.textContent = '⏳ Loading...';
             
             try {
                 console.log('Fetching hotspots for:', selectedLocation);
@@ -387,17 +454,11 @@
                 console.log('Hotspots response:', data);
                 displayHotspots(data);
                 
-                showHotspotsBtn.textContent = '✅ Hotspots Shown';
-                showHotspotsBtn.classList.remove('bg-orange-500', 'hover:bg-orange-600');
-                showHotspotsBtn.classList.add('bg-green-500');
-                
             } catch (error) {
-                console.error('Error:', error);
-                alert('Failed to fetch hotspots. Please try again.');
-                showHotspotsBtn.disabled = false;
-                showHotspotsBtn.textContent = '🔥 Show Hotspots';
+                console.error('Hotspots error:', error);
+                // Silently fail - hotspots are supplementary
             }
-        });
+        }
 
         // New analysis button
         newAnalysisBtn.addEventListener('click', () => {
@@ -412,12 +473,6 @@
             selectedLocationDisplay.classList.add('hidden');
             predictBtn.disabled = true;
             document.getElementById('predict-helper').textContent = 'Select a location to enable analysis';
-            
-            // Reset hotspots button
-            showHotspotsBtn.disabled = false;
-            showHotspotsBtn.textContent = '🔥 Show Hotspots';
-            showHotspotsBtn.classList.remove('bg-green-500');
-            showHotspotsBtn.classList.add('bg-orange-500', 'hover:bg-orange-600');
         });
 
         // ===== HELPER FUNCTIONS =====
@@ -434,12 +489,17 @@
             
             // Update map
             if (marker) map.removeLayer(marker);
-            marker = L.marker([lat, lon]).addTo(map);
+            marker = L.marker([lat, lon], { draggable: true }).addTo(map);
             map.setView([lat, lon], 14);
+            
+            // Add drag event listener to update location when marker is moved
+            marker.on('dragend', function(e) {
+                const newLatLng = e.target.getLatLng();
+                setLocation(newLatLng.lat, newLatLng.lng, `Custom Location (Dragged)`);
+            });
         }
         
         function displayRiskResults(data) {
-            loadingState.classList.add('hidden');
             resultsContent.classList.remove('hidden');
             
             // Convert 0-2 scale to 0-100%
@@ -453,22 +513,20 @@
             document.getElementById('risk-level-text').textContent = getRiskLevel(riskPercentage);
             document.getElementById('risk-description').textContent = data.explanation || 'Risk analysis complete';
             
-            // Update gauge needle (-90 = green/left, 0 = yellow/middle, 90 = red/right)
-            const needleRotation = -90 + (riskPercentage / 100) * 180;
-            document.getElementById('gauge-needle').style.transform = `rotate(${needleRotation}deg) translateX(-50%)`;
-            
             // Update three layers
             if (data.layer_scores) {
                 const layers = data.layer_scores;
                 
-                // Historical
-                const histPercent = Math.round((layers.historical.score / 2) * 100);
+                // Historical - Convert score (0-2) to percentage (0-100%)
+                const histScore = layers.historical.score || 0;
+                const histPercent = Math.round((histScore / 2) * 100);
                 document.getElementById('historical-score').textContent = `${histPercent}%`;
                 document.getElementById('historical-details').textContent = 
                     `Past crime patterns: ${layers.historical.score === 0 ? 'Low' : layers.historical.score === 1 ? 'Medium' : 'High'} risk`;
                 
-                // Environmental
-                const envPercent = Math.round((layers.environmental.score / 2) * 100);
+                // Environmental - Convert score (0-2) to percentage (0-100%)
+                const envScore = layers.environmental.score || 0;
+                const envPercent = Math.round((envScore / 2) * 100);
                 document.getElementById('environmental-score').textContent = `${envPercent}%`;
                 document.getElementById('environmental-details').textContent = 
                     `${layers.environmental.poi_count} POIs detected within 500m`;
@@ -487,8 +545,9 @@
                     poiBreakdown.textContent = items.join(' • ');
                 }
                 
-                // Contextual
-                const ctxPercent = Math.round((layers.contextual.score / 2) * 100);
+                // Contextual - Convert score (0-2) to percentage (0-100%)
+                const ctxScore = layers.contextual.score || 0;
+                const ctxPercent = Math.round((ctxScore / 2) * 100);
                 document.getElementById('contextual-score').textContent = `${ctxPercent}%`;
                 document.getElementById('contextual-details').textContent = 
                     layers.contextual.news_count > 0 
@@ -522,6 +581,15 @@
                     fillColor: getHexColor(riskPercentage),
                     fillOpacity: 0.3
                 }).addTo(map);
+            }
+            
+            // Update analysis circle color to match risk level
+            if (analysisCircle) {
+                const riskColor = getHexColor(riskPercentage);
+                analysisCircle.setStyle({
+                    color: riskColor,
+                    fillColor: riskColor
+                });
             }
         }
         
@@ -602,6 +670,165 @@
             if (percentage < 33) return '✅ LOW RISK AREA';
             if (percentage < 66) return '⚠️ MEDIUM RISK AREA';
             return '🚨 HIGH RISK AREA';
+        }
+        
+        // ===== ROUTE ANALYSIS FUNCTIONS =====
+        
+        // Fast risk prediction with caching
+        async function getRiskForPoint(lat, lon, useFastMode = false) {
+            // Create cache key (round to 3 decimals ~111m precision)
+            const cacheKey = `${lat.toFixed(CACHE_PRECISION)},${lon.toFixed(CACHE_PRECISION)}`;
+            
+            // Check cache first
+            if (riskCache.has(cacheKey)) {
+                return riskCache.get(cacheKey);
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/predict_risk`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        latitude: lat, 
+                        longitude: lon,
+                        fast_mode: useFastMode
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const riskPercentage = Math.round((data.risk_score_raw / 2) * 100);
+                    
+                    // Cache the result
+                    riskCache.set(cacheKey, riskPercentage);
+                    
+                    // Limit cache size to prevent memory issues (keep last 1000)
+                    if (riskCache.size > 1000) {
+                        const firstKey = riskCache.keys().next().value;
+                        riskCache.delete(firstKey);
+                    }
+                    
+                    return riskPercentage;
+                } else {
+                    return 50; // Default medium risk
+                }
+            } catch (error) {
+                console.error('Error fetching risk:', error);
+                return 50;
+            }
+        }
+        
+        async function calculateAndAnalyzeRoute() {
+            const startLatLng = routeStartMarker.getLatLng();
+            const endLatLng = routeEndMarker.getLatLng();
+            
+            // Create routing control
+            routeControl = L.Routing.control({
+                waypoints: [
+                    L.latLng(startLatLng.lat, startLatLng.lng),
+                    L.latLng(endLatLng.lat, endLatLng.lng)
+                ],
+                routeWhileDragging: false,
+                addWaypoints: false,
+                draggableWaypoints: false,
+                fitSelectedRoutes: true,
+                showAlternatives: false,
+                lineOptions: {
+                    styles: [{color: '#3388ff', opacity: 0.3, weight: 6}]
+                },
+                createMarker: () => null // Don't create default markers
+            }).addTo(map);
+            
+            // Wait for route to be calculated
+            routeControl.on('routesfound', async (e) => {
+                const route = e.routes[0];
+                const coordinates = route.coordinates;
+                
+                console.log(`Route found with ${coordinates.length} points`);
+                
+                // Analyze risk along the route (sample every 10th point to reduce API calls)
+                await analyzeRouteRisk(coordinates);
+            });
+        }
+        
+        async function analyzeRouteRisk(coordinates) {
+            // Clear previous risk segments
+            routeRiskSegments.forEach(segment => map.removeLayer(segment));
+            routeRiskSegments = [];
+            
+            // Sample points more aggressively (every 20th point instead of 10th)
+            const sampledPoints = [];
+            const sampleRate = Math.max(20, Math.floor(coordinates.length / 15)); // Max 15 API calls
+            for (let i = 0; i < coordinates.length; i += sampleRate) {
+                sampledPoints.push(coordinates[i]);
+            }
+            // Always include the last point
+            if (coordinates[coordinates.length - 1] !== sampledPoints[sampledPoints.length - 1]) {
+                sampledPoints.push(coordinates[coordinates.length - 1]);
+            }
+            
+            console.log(`Analyzing ${sampledPoints.length} points along route...`);
+            
+            // Fetch ALL risks in parallel using cached function with fast_mode
+            const riskPromises = sampledPoints.map(point => 
+                getRiskForPoint(point.lat, point.lng, true).then(risk => ({
+                    lat: point.lat,
+                    lng: point.lng,
+                    risk: risk
+                }))
+            );
+            
+            // Wait for all requests to complete at once
+            const riskData = await Promise.all(riskPromises);
+            
+            // Draw colored segments
+            for (let i = 0; i < riskData.length - 1; i++) {
+                const start = riskData[i];
+                const end = riskData[i + 1];
+                const avgRisk = (start.risk + end.risk) / 2;
+                
+                const color = getHexColor(avgRisk);
+                
+                const segment = L.polyline(
+                    [[start.lat, start.lng], [end.lat, end.lng]],
+                    {
+                        color: color,
+                        weight: 8,
+                        opacity: 0.8
+                    }
+                ).addTo(map);
+                
+                segment.bindPopup(`Risk: ${Math.round(avgRisk)}% - ${getRiskLevel(avgRisk)}`);
+                routeRiskSegments.push(segment);
+            }
+            
+            console.log('Route risk analysis complete!');
+            alert(`🎉 Route Analysis Complete!\\n\\n✅ Green segments = Low risk\\n⚠️ Yellow segments = Medium risk\\n🚨 Red segments = High risk\\n\\nClick on any segment to see its risk score.`);
+        }
+        
+        function clearRoute() {
+            if (routeStartMarker) {
+                map.removeLayer(routeStartMarker);
+                routeStartMarker = null;
+            }
+            if (routeEndMarker) {
+                map.removeLayer(routeEndMarker);
+                routeEndMarker = null;
+            }
+            if (routeControl) {
+                map.removeControl(routeControl);
+                routeControl = null;
+            }
+            routeRiskSegments.forEach(segment => map.removeLayer(segment));
+            routeRiskSegments = [];
+        }
+        
+        function exitRouteMode() {
+            isRouteMode = false;
+                analyzeRouteBtn.innerHTML = '🛣️ Analyze My Route';
+                analyzeRouteBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+                analyzeRouteBtn.classList.add('bg-gradient-to-r', 'from-green-500', 'to-emerald-500', 'hover:from-green-600', 'hover:to-emerald-600');
+            clearRoute();
         }
     </script>
 </body>

@@ -50,15 +50,15 @@ def load_models():
     """Loads ML models and encoders on startup."""
     global crime_model, h3_index_encoder, day_encoder
     try:
-        # NOTE: In a real app, these files would be downloaded from S3/GCS 
-        # and loaded into memory on startup.
-        print("Loading ML models... (MOCK LOAD)")
-        crime_model = True # Mocking a loaded model
-        h3_index_encoder = True
-        day_encoder = True
+        print("Loading XGBoost ML models from disk...")
+        crime_model = joblib.load('crime_model.joblib')
+        h3_index_encoder = joblib.load('h3_index_encoder.joblib')
+        day_encoder = joblib.load('day_encoder.joblib')
+        print("✅ XGBoost model and encoders loaded successfully!")
         
     except Exception as e:
         print(f"ERROR: Could not load ML models: {e}")
+        print("Make sure you've run train_model.py to generate the .joblib files.")
         # In a real deployment, you might let the app crash if models fail to load
 
 def start_scheduler():
@@ -212,18 +212,24 @@ async def get_hotspots(lat: float, lon: float, radius_km: float = 2.0, db: Sessi
     hotspots = query.all()
     
     if not hotspots:
-        return {"hotspots": []}
+        return {"hotspots": [], "count": 0}
 
-    # Format output for the frontend
+    # Format output for the frontend with correct field names
     formatted_hotspots = [
-        {"lat": h.latitude, "lon": h.longitude, "type": h.crime_type} for h in hotspots
+        {
+            "latitude": h.latitude,    # Changed from "lat" to "latitude"
+            "longitude": h.longitude,  # Changed from "lon" to "longitude"
+            "type": h.crime_type
+        } 
+        for h in hotspots 
+        if h.latitude is not None and h.longitude is not None  # Filter out NULL values
     ]
     
-    return {"hotspots": formatted_hotspots}
+    return {"hotspots": formatted_hotspots, "count": len(formatted_hotspots)}
 
 
 @app.post("/predict_risk")
-async def predict_risk(location_data: LocationInput, db: Session = Depends(get_db)):
+async def predict_risk(location_data: LocationInput, fast_mode: bool = False, db: Session = Depends(get_db)):
     """
     THREE-LAYER DYNAMIC PREDICTION SYSTEM
     
@@ -232,6 +238,8 @@ async def predict_risk(location_data: LocationInput, db: Session = Depends(get_d
     Layer 3 (Contextual - 30%): Recent crime news (48-hour window)
     
     This approach bridges the 11-year gap between training data and present day.
+    
+    fast_mode: If True, skips expensive operations for route analysis
     """
     lat = location_data.latitude
     lon = location_data.longitude
@@ -247,50 +255,93 @@ async def predict_risk(location_data: LocationInput, db: Session = Depends(get_d
     h3_index = h3.latlng_to_cell(lat, lon, H3_RESOLUTION)
     h3_boundary = h3.cell_to_boundary(h3_index)
 
-    # Statistical Prediction (MOCK for demo - replace with real model)
-    # In production:
-    # features = encode_features(h3_index, day_name, hour)
-    # historical_prediction = crime_model.predict([features])[0]
-    
-    # MOCK: Random prediction for demonstration
-    import random
-    historical_prediction = random.choice([0, 1, 2])
-    historical_score = historical_prediction
+    # REAL XGBoost Prediction
+    try:
+        # Encode features using the same encoders from training
+        # Handle unseen H3 indices gracefully
+        try:
+            h3_encoded = h3_index_encoder.transform([h3_index])[0]
+        except ValueError:
+            # H3 index not seen during training - use a default/average encoding
+            print(f"Warning: H3 index {h3_index} not in training data. Using fallback.")
+            h3_encoded = 0  # Default to first encoding
+        
+        try:
+            day_encoded = day_encoder.transform([day_name])[0]
+        except ValueError:
+            # Day name issue (shouldn't happen but be safe)
+            print(f"Warning: Day {day_name} not in training data. Using fallback.")
+            day_encoded = 0
+        
+        # Create feature vector: [h3_index_encoded, day_encoded, hour_of_day]
+        features = [[h3_encoded, day_encoded, hour]]
+        
+        # Get prediction from XGBoost model (0=Low, 1=Medium, 2=High)
+        historical_prediction = crime_model.predict(features)[0]
+        historical_score = int(historical_prediction)
+        
+        print(f"Layer 1 (Historical - XGBoost): {historical_score}/2 for h3={h3_index[:10]}..., day={day_name}, hour={hour}")
+    except Exception as e:
+        print(f"Warning: XGBoost prediction failed: {e}. Using fallback.")
+        # Fallback to medium risk if prediction fails
+        historical_score = 1
     
     print(f"Layer 1 (Historical): {historical_score}/2")
 
     # --- LAYER 2: ENVIRONMENTAL SCORE (The Present-Day World) ---
-    environmental_score, poi_count, poi_breakdown = get_environmental_risk_score(lat, lon, radius_meters=500)
+    # Skip POI lookup in fast mode (expensive API call)
+    if fast_mode:
+        environmental_score = 1  # Default to medium
+        poi_count = 0
+        poi_breakdown = {"bars": 0, "nightclubs": 0, "atms": 0, "banks": 0, "alcohol_shops": 0}
+    else:
+        environmental_score, poi_count, poi_breakdown = get_environmental_risk_score(lat, lon, radius_meters=500)
     
     print(f"Layer 2 (Environmental): {environmental_score}/2 (POIs: {poi_count})")
     
     # --- LAYER 3: CONTEXTUAL SCORE (The Immediate-Term) ---
-    context_radius_meters = 1500 
-    time_window = datetime.now() - timedelta(hours=48)
-    
-    context_query = db.query(NewsArticle).filter(
-        (NewsArticle.published_at >= time_window) & 
-        (
-            ST_DWithin(
-                NewsArticle.location,
-                ST_SetSRID(ST_MakePoint(lon, lat), 4326),
-                context_radius_meters
-            )
-        )
-    ).limit(10)
-    
-    recent_context = context_query.all()
-    context_count = len(recent_context)
-    
-    # Contextual risk scoring
-    if context_count >= 3:
-        contextual_score = 2  # High: Multiple recent incidents
-    elif context_count >= 1:
-        contextual_score = 1  # Medium: Some recent activity
+    # Skip news lookup in fast mode (expensive DB query)
+    if fast_mode:
+        contextual_score = 1  # Default to medium
+        news_count = 0
+        news_articles = []
     else:
-        contextual_score = 0  # Low: No recent news
+        context_radius_meters = 1500 
+        time_window = datetime.now() - timedelta(hours=24)
+        
+        context_query = db.query(NewsArticle).filter(
+            (NewsArticle.published_at >= time_window) & 
+            (
+                ST_DWithin(
+                    NewsArticle.location,
+                    ST_SetSRID(ST_MakePoint(lon, lat), 4326),
+                    context_radius_meters
+                )
+            )
+        ).limit(10)
+        
+        recent_context = context_query.all()
+        context_count = len(recent_context)
+        
+        # Contextual risk scoring
+        if context_count >= 3:
+            contextual_score = 2  # High: Multiple recent incidents
+        elif context_count >= 1:
+            contextual_score = 1  # Medium: Some recent activity
+        else:
+            contextual_score = 0  # Low: No recent news
+        
+        news_count = context_count
+        news_articles = [
+            {
+                'title': article.title,
+                'published_at': article.published_at.isoformat() if article.published_at else None,
+                'url': article.url
+            } 
+            for article in recent_context
+        ]
     
-    print(f"Layer 3 (Contextual): {contextual_score}/2 (News: {context_count})")
+    print(f"Layer 3 (Contextual): {contextual_score}/2 (News: {news_count})")
     
     # --- WEIGHTED COMBINATION ---
     final_score_raw = (
@@ -309,16 +360,8 @@ async def predict_risk(location_data: LocationInput, db: Session = Depends(get_d
     
     # --- RESPONSE WITH DETAILED BREAKDOWN ---
     
-    # Format contextual news data
-    context_data = [
-        {
-            "title": article.title,
-            "link": article.url,
-            "location": article.location_name,
-            "published": article.published_at.isoformat()
-        } 
-        for article in recent_context
-    ]
+    # Format contextual news data (only if not in fast mode)
+    context_data = news_articles if not fast_mode else []
     
     # Explanation for the user
     explanation_parts = []

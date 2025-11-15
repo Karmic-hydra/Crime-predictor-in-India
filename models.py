@@ -1,12 +1,19 @@
+import os
 import sqlalchemy
 from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from geoalchemy2 import Geometry # This will work now
+from geoalchemy2 import Geometry
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # --- 1. Database Connection Setup ---
-# Your cloud connection URL (unchanged)
-DATABASE_URL = "postgresql://neondb_owner:npg_wJ0lMpkc4RPe@ep-solitary-paper-a4injs6c.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL not found in .env file. Please configure your environment variables.")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -69,7 +76,7 @@ class NewsArticle(Base):
 
 # --- 3. Create the Tables in the Database ---
 def create_tables():
-    print("Connecting to database and creating tables...")
+    print("Connecting to d.tabase and creating tables...")
     # This will now check for both 'crimes' and 'news_corpus'
     Base.metadata.create_all(bind=engine)
     print("All tables created successfully (if they didn't exist).")
