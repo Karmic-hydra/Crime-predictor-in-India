@@ -24,10 +24,13 @@ from models import SessionLocal, Crime, NewsArticle, engine, Base
 
 # The API BASE URL is dynamically determined on deployment, but we use 8000 locally
 # For production, this list should include your Netlify/Vercel URL
-ALLOWED_ORIGINS = [
-    "*",  # Allow all origins for development (IMPORTANT: Restrict in production!)
+ALLOWED_ORIGINS =[
+    "http://127.0.0.1:5500",  
+    "http://localhost:5500",
+    "https://crime-predictor-in-india.netlify.app", # <-- ADD YOUR NETLIFY URL
+    "https://*.netlify.app", # <-- BEST PRACTICE: Add a wildcard for safety
+    "https://crime-predictor-in-india.onrender.com" # Allow Render to talk to itself
 ]
-
 # H3 resolution used for prediction cells (e.g., 8 is ~0.73 sq km)
 H3_RESOLUTION = 8 
 
