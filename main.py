@@ -46,9 +46,30 @@ day_encoder = None
 class LocationInput(BaseModel):
     latitude: float
     longitude: float
+
 def load_models():
-    """Loads ML models and encoders on startup."""
+    """Loads ML models and encoders on startup. Trains them if not found."""
     global crime_model, h3_index_encoder, day_encoder
+    
+    model_files = ['crime_model.joblib', 'h3_index_encoder.joblib', 'day_encoder.joblib']
+    models_exist = all(os.path.exists(f) for f in model_files)
+    
+    if not models_exist:
+        print("⚠️  ML model files not found. Training models now...")
+        print("This will take a few minutes on first deployment...")
+        try:
+            import subprocess
+            result = subprocess.run(['python', 'train_model.py'], 
+                                  capture_output=True, text=True, timeout=600)
+            if result.returncode != 0:
+                print(f"ERROR training models: {result.stderr}")
+                raise Exception("Model training failed")
+            print("✅ Models trained successfully!")
+        except Exception as e:
+            print(f"ERROR: Could not train models: {e}")
+            print("Deployment will continue but predictions may fail.")
+            return
+    
     try:
         print("Loading XGBoost ML models from disk...")
         crime_model = joblib.load('crime_model.joblib')
@@ -58,7 +79,7 @@ def load_models():
         
     except Exception as e:
         print(f"ERROR: Could not load ML models: {e}")
-        print("Make sure you've run train_model.py to generate the .joblib files.")
+        print("Make sure train_model.py has run successfully.")
         # In a real deployment, you might let the app crash if models fail to load
 
 def start_scheduler():
