@@ -153,15 +153,13 @@ RawData/
 FINAL_DATA_CLEANED.csv
 FINAL_DATA_WITH_GEOLOCATION.csv
 FINAL_DATA_WITH_ALL_FEATURES.csv
-# Un-ignore training data for Render deployment
-!ALL_INDIA_DATA.csv
-
+ALL_INDIA_DATA.csv
 # --- Model Files ---
-# These are large binary files derived from data (will be trained on Render).
-*.joblib
-crime_model.joblib
-h3_index_encoder.joblib
-day_encoder.joblib
+# Un-comment below if you don't want to commit models (they're only ~10MB)
+# *.joblib
+# crime_model.joblib
+# h3_index_encoder.joblib
+# day_encoder.joblib
 
 # --- IDE Files ---
 .vscode/
